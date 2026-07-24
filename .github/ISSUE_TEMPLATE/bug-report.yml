@@ -37,7 +37,6 @@ body:
         - Messages
         - Notifications
         - Administration
-        - API
         - Integrations
         - Other
     validations:

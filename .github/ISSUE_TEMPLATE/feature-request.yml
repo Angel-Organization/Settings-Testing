@@ -1,17 +1,18 @@
-name: Bug Report
-description: Report a bug or unexpected behavior.
-type: Bug
+name: Feature Request
+description: Request a new feature or enhancement.
+type: Feature
+
 body:
   - type: markdown
     attributes:
       value: |
-        Please complete the information below. This information will be used to automatically classify and triage the issue.
+        Please complete the information below. This information will be used to automatically classify and triage the request.
 
   - type: checkboxes
     id: product
     attributes:
       label: Product
-      description: Which product is affected?
+      description: Which product is this request for?
       options:
         - label: ScriptSure
         - label: VetWay
@@ -24,13 +25,11 @@ body:
     attributes:
       label: Initial Priority
       description: |
-        Select the initial priority for this issue.
-        • Use Prod Critical for ScriptSure critical issues.
-        • Use P0 for VetWay critical issues.
-        • Priority may be adjusted during triage.
+        Select the initial priority for this request.
+        Priority may be adjusted during triage.
       options:
-        - Prod Critical 
-        - P0 
+        - Prod Critical
+        - P0
         - P1
         - P2
         - P3
@@ -41,13 +40,13 @@ body:
     id: source
     attributes:
       label: Source
-      description: How was this issue discovered?
+      description: Where did this request originate?
       options:
         - Customer
         - QA
         - Demo
         - Support
-        - Internal Testing
+        - Internal Request
         - Other
     validations:
       required: false
@@ -56,44 +55,60 @@ body:
     id: summary
     attributes:
       label: Summary
-      description: Briefly describe the issue.
-      placeholder: A concise description of the bug.
+      description: Briefly describe the requested feature.
+      placeholder: A concise description of the feature request.
     validations:
       required: true
 
   - type: textarea
-    id: expected_behavior
+    id: problem
     attributes:
-      label: Expected Behavior
-      description: What should have happened?
-    validations:
-      required: true
-
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to Reproduce
-      description: Provide the steps needed to reproduce the issue.
+      label: Problem / Opportunity
+      description: What problem does this solve or what opportunity does it address?
       placeholder: |
-        1. Go to...
-        2. Click...
-        3. Enter...
-        4. Observe...
+        Describe the current pain point or opportunity.
     validations:
       required: true
 
   - type: textarea
-    id: environment
+    id: proposed_solution
     attributes:
-      label: Environment
-      description: Provide any relevant environment information.
+      label: Proposed Solution
+      description: Describe the desired functionality.
       placeholder: |
-        Environment:
-        User Type
-        User Email:
+        What would you like the product to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_value
+    attributes:
+      label: Business Value
+      description: Why is this important?
+      placeholder: |
+        Examples:
+        • Saves users time
+        • Improves workflow
+        • Supports a customer request
+        • Required for compliance
+        • Reduces support tickets
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: What would need to be true for this request to be considered complete?
+      placeholder: |
+        • User can...
+        • System displays...
+        • Data is...
+    validations:
+      required: false
 
   - type: textarea
     id: additional_context
     attributes:
       label: Additional Context
-      description: Include screenshots, recordings, logs, stack traces, or any other information that may help diagnose the issue.
+      description: Include mockups, screenshots, examples, links, or any other supporting information.

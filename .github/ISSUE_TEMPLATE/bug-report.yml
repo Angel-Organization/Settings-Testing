@@ -6,7 +6,7 @@ body:
       value: |
         Please complete the information below. This information will be used to automatically classify and triage the issue.
 
-  - type: dropdown
+  - type: checkboxes
     id: product
     attributes:
       label: Product
@@ -18,7 +18,7 @@ body:
     validations:
       required: true
 
-  - type: dropdown
+  - type: checkboxes
     id: product_area
     attributes:
       label: Product Area

@@ -16,31 +16,7 @@ body:
         - label: VetWay
         - label: Exchange
     validations:
-      required: true
-
-  - type: checkboxes
-    id: product_area
-    attributes:
-      label: Product Area
-      description: Which area of the product is affected?
-      options:
-        - label: Allergy
-        - label: API
-        - label: Billing
-        - label: Compound
-        - label: Drug History
-        - label: Formulary
-        - label: Patients
-        - label: Prescriptions
-        - label: Reporting
-        - label: Med Cart
-        - label: Messages
-        - label: Notifications
-        - label: Administration
-        - label: Integrations
-        - label: Other
-    validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: priority
@@ -58,22 +34,22 @@ body:
         - P2
         - P3
     validations:
-      required: true
+      required: false
 
-  - type: dropdown
+  - type: checkboxes
     id: source
     attributes:
       label: Source
       description: How was this issue discovered?
       options:
-        - Customer
-        - QA
-        - Demo
-        - Support
-        - Internal Testing
-        - Other
+        - label: Customer
+        - label: QA
+        - label: Demo
+        - label: Support
+        - label: Internal Testing
+        - label: Other
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: summary

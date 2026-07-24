@@ -60,7 +60,7 @@ body:
     validations:
       required: true
 
-    - type: textarea
+  - type: textarea
     id: expected_behavior
     attributes:
       label: Expected Behavior

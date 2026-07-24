@@ -36,18 +36,18 @@ body:
     validations:
       required: false
 
-  - type: checkboxes
+  - type: dropdown
     id: source
     attributes:
       label: Source
       description: How was this issue discovered?
       options:
-        - label: Customer
-        - label: QA
-        - label: Demo
-        - label: Support
-        - label: Internal Testing
-        - label: Other
+        - Customer
+        - QA
+        - Demo
+        - Support
+        - Internal Testing
+        - Other
     validations:
       required: false
 

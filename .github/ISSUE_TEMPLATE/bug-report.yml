@@ -60,6 +60,14 @@ body:
     validations:
       required: true
 
+    - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+
   - type: textarea
     id: steps
     attributes:
@@ -73,21 +81,6 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: expected_behavior
-    attributes:
-      label: Expected Behavior
-      description: What should have happened?
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual_behavior
-    attributes:
-      label: Actual Behavior
-      description: What actually happened?
-    validations:
-      required: true
 
   - type: textarea
     id: environment

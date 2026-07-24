@@ -12,9 +12,9 @@ body:
       label: Product
       description: Which product is affected?
       options:
-        - ScriptSure
-        - VetWay
-        - Exchange
+        - label: ScriptSure
+        - label: VetWay
+        - label: Exchange
     validations:
       required: true
 
@@ -24,21 +24,21 @@ body:
       label: Product Area
       description: Which area of the product is affected?
       options:
-        - Allergy
-        - API
-        - Billing
-        - Compound
-        - Drug History
-        - Formulary
-        - Patients
-        - Prescriptions
-        - Reporting
-        - Med Cart
-        - Messages
-        - Notifications
-        - Administration
-        - Integrations
-        - Other
+        - label: Allergy
+        - label: API
+        - label: Billing
+        - label: Compound
+        - label: Drug History
+        - label: Formulary
+        - label: Patients
+        - label: Prescriptions
+        - label: Reporting
+        - label: Med Cart
+        - label: Messages
+        - label: Notifications
+        - label: Administration
+        - label: Integrations
+        - label: Other
     validations:
       required: true
 

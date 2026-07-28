@@ -106,7 +106,7 @@ body:
         - Version:
 
   - type: textarea
-    id: additional context
+    id: context
     attributes:
       label: Additional Context
       description: Include any additional information that may help diagnose the issue.

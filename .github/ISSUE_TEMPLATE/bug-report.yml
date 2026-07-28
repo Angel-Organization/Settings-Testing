@@ -7,15 +7,15 @@ body:
       value: |
         Please complete the information below. This information will be used to automatically classify and triage the issue.
 
-  - type: checkboxes
+  - type: dropdown
     id: product
     attributes:
       label: Product
       description: Which product is affected?
       options:
-        - label: ScriptSure
-        - label: VetWay
-        - label: Exchange
+        - ScriptSure
+        - VetWay
+        - Exchange
     validations:
       required: false
 

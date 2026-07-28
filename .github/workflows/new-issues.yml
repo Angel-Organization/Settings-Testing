@@ -1,0 +1,303 @@
+name: Set Fields for New Issues
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+
+# Prevent two runs from changing the same issue at the same time.
+concurrency:
+  group: initialize-issue-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  initialize-issue:
+    name: Set issue fields
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Read issue form and set issue fields
+        uses: actions/github-script@v8
+        env:
+          # These should be repository variables containing the numeric
+          # organization-level issue field IDs.
+          PRIORITY_ISSUE_FIELD_ID: ${{ vars.PRIORITY_ISSUE_FIELD_ID }}
+          SOURCE_ISSUE_FIELD_ID: ${{ vars.SOURCE_ISSUE_FIELD_ID }}
+          PRODUCT_ISSUE_FIELD_ID: ${{ vars.PRODUCT_ISSUE_FIELD_ID }}
+
+        with:
+
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+          script: |
+            const issue = context.payload.issue;
+            const issueBody = issue.body || "";
+            const issueNumber = issue.number;
+            const { owner, repo } = context.repo;
+
+            /*
+             * This object is the single place where an issue-form question
+             * is mapped to its corresponding organization issue field.
+             *
+             * question:
+             *   The visible heading GitHub creates in the issue body.
+             *
+             * issueFieldId:
+             *   The numeric ID of the organization-level issue field.
+             */
+            const ISSUE_FIELDS = {
+              priority: {
+                question: "Priority",
+                variableName: "PRIORITY_ISSUE_FIELD_ID",
+                issueFieldId: process.env.PRIORITY_ISSUE_FIELD_ID
+              },
+
+              source: {
+                question: "Source",
+                variableName: "SOURCE_ISSUE_FIELD_ID",
+                issueFieldId: process.env.SOURCE_ISSUE_FIELD_ID
+              },
+
+              product: {
+                question: "Product",
+                variableName: "PRODUCT_ISSUE_FIELD_ID",
+                issueFieldId: process.env.PRODUCT_ISSUE_FIELD_ID
+              }
+            };
+
+            /*
+             * Reads the answer beneath a rendered GitHub issue-form heading.
+             *
+             * For example, this issue body:
+             *
+             * ### Priority
+             *
+             * P1
+             *
+             * ### Source
+             *
+             * QA
+             *
+             * produces:
+             *
+             * getIssueFormAnswer("Priority") === "P1"
+             * getIssueFormAnswer("Source") === "QA"
+             */
+            function getIssueFormAnswer(question) {
+              /*
+               * Escape any special regular-expression characters that might
+               * appear in the visible issue-form question.
+               */
+              const escapedQuestion = question.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+              );
+
+              /*
+               * Match:
+               *
+               * ### Question
+               *
+               * Answer
+               *
+               * until the next ### heading or the end of the issue body.
+               */
+              const pattern = new RegExp(
+                `(?:^|\\n)###\\s+${escapedQuestion}\\s*\\n+([\\s\\S]*?)(?=\\n###\\s+|$)`,
+                "i"
+              );
+
+              const match = issueBody.match(pattern);
+
+              if (!match) {
+                return null;
+              }
+
+              /*
+               * Remove hidden HTML comments and surrounding whitespace.
+               */
+              const answer = match[1]
+                .replace(/<!--[\s\S]*?-->/g, "")
+                .trim();
+
+              /*
+               * GitHub may insert "_No response_" for an unanswered field.
+               */
+              if (!answer || /^_No response_$/i.test(answer)) {
+                return null;
+              }
+
+              return answer;
+            }
+
+            /*
+             * Confirm that the configured issue field ID exists and is a
+             * numeric REST API issue-field ID.
+             */
+            function requireNumericIssueFieldId(fieldConfig) {
+              if (!fieldConfig.issueFieldId) {
+                throw new Error(
+                  `Repository variable ${fieldConfig.variableName} is missing.`
+                );
+              }
+
+              const numericId = Number(fieldConfig.issueFieldId);
+
+              if (!Number.isInteger(numericId)) {
+                throw new Error(
+                  `Repository variable ${fieldConfig.variableName} must contain a numeric issue field ID.`
+                );
+              }
+
+              return numericId;
+            }
+
+            /*
+             * Read every configured issue-form answer without repeating the
+             * question names elsewhere in the workflow.
+             *
+             * Result:
+             *
+             * {
+             *   priority: "P1",
+             *   source: "QA",
+             *   product: "ScriptSure"
+             * }
+             */
+            function readIssueFormAnswers() {
+              const answers = {};
+
+              for (const [key, fieldConfig] of Object.entries(ISSUE_FIELDS)) {
+                answers[key] = getIssueFormAnswer(
+                  fieldConfig.question
+                );
+              }
+                          /*
+             * Updates a single organization Issue Field.
+             *
+             * The value for a single-select field is the option name
+             * exactly as it appears in GitHub.
+             */
+            async function setIssueField(fieldId, value) {
+
+              await github.request(
+                "POST /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
+                {
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+
+                  issue_field_values: [
+                    {
+                      field_id: fieldId,
+                      value: value
+                    }
+                  ],
+
+                  headers: {
+                    accept: "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2026-03-10"
+                  }
+                }
+              );
+            }
+
+            /*
+             * Updates every configured Issue Field that has an answer.
+             *
+             * Since ISSUE_FIELDS is the source of truth, adding another
+             * field later only requires adding another object to the
+             * ISSUE_FIELDS configuration.
+             */
+            async function updateIssueFields(answers) {
+
+              for (const [key, fieldConfig] of Object.entries(ISSUE_FIELDS)) {
+
+                const answer = answers[key];
+
+                if (!answer) {
+                  core.info(
+                    `Skipping ${fieldConfig.question}; no answer found.`
+                  );
+                  continue;
+                }
+
+                const fieldId =
+                  requireNumericIssueFieldId(fieldConfig);
+
+                core.info(
+                  `Setting ${fieldConfig.question} = "${answer}"`
+                );
+
+                await setIssueField(
+                  fieldId,
+                  answer
+                );
+              }
+            }
+
+            /*
+             * Log every answer that was parsed.
+             * Makes debugging much easier when someone changes
+             * the issue template later.
+             */
+            function logAnswers(answers) {
+
+              core.startGroup("Parsed Issue Form Answers");
+
+              for (const [key, value] of Object.entries(answers)) {
+
+                core.info(
+                  `${key}: ${value ?? "(no answer)"}`
+                );
+
+              }
+
+              core.endGroup();
+            }
+            
+
+              return answers;
+            }
+                        /*
+             * Main workflow entry point.
+             */
+            async function main() {
+
+              core.startGroup("Reading Issue Form");
+
+              const answers = readIssueFormAnswers();
+
+              logAnswers(answers);
+
+              core.endGroup();
+
+              core.startGroup("Updating Issue Fields");
+
+              await updateIssueFields(answers);
+
+              core.endGroup();
+
+              core.notice(
+                `Issue #${issueNumber} initialized successfully.`
+              );
+
+            }
+
+            /*
+             * Execute the workflow.
+             */
+            try {
+
+              await main();
+
+            } catch (error) {
+
+              core.setFailed(error.message);
+
+            }

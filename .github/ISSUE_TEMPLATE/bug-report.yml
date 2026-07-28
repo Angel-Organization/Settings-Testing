@@ -1,10 +1,21 @@
 name: Bug Report
 description: Report a bug or unexpected behavior.
 type: Bug
+
 body:
   - type: markdown
     attributes:
       value: |
+        <h2>Initial Classification</h2>
+
+        <table>
+          <tr>
+            <th style="padding-right: 40px;">Product</th>
+            <th style="padding-right: 40px;">Priority</th>
+            <th>Source</th>
+          </tr>
+        </table>
+
         Please complete the information below. This information will be used to automatically classify and triage the issue.
 
   - type: dropdown
@@ -29,8 +40,8 @@ body:
         • Use P0 for VetWay critical issues.
         • Priority may be adjusted during triage.
       options:
-        - Prod Critical 
-        - P0 
+        - Prod Critical
+        - P0
         - P1
         - P2
         - P3
@@ -89,8 +100,11 @@ body:
       description: Provide any relevant environment information.
       placeholder: |
         Environment:
-        User Type
+        User Type:
         User Email:
+        Browser:
+        OS:
+        Version:
 
   - type: textarea
     id: additional_context

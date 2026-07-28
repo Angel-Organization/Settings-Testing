@@ -15,9 +15,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/github-script@v8
+      - name: Initialize Issue Fields
+        uses: actions/github-script@v8
+
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
           script: |
 
             /*
@@ -36,15 +39,14 @@ jobs:
              * Repository Issue Fields
              * ============================================================
              *
-             * Each object represents one GitHub Issue Field.
-             *
-             * To add another field in the future, simply add another object
-             * to this array. No other code changes should be required.
+             * Add additional fields by appending another object to this array.
              */
 
             const ISSUE_FIELDS = [
 
               {
+                key: "product",
+
                 label: "Product",
 
                 fieldId: "IFSS_kgDOAqu9dA",
@@ -60,6 +62,8 @@ jobs:
               },
 
               {
+                key: "priority",
+
                 label: "Priority",
 
                 fieldId: "IFSS_kgDOAqcSiw",
@@ -78,6 +82,8 @@ jobs:
               },
 
               {
+                key: "source",
+
                 label: "Source",
 
                 fieldId: "IFSS_kgDOAqu99Q",
@@ -92,11 +98,7 @@ jobs:
                   Other: "IFSSO_kgDOBKysIQ"
 
                 }
-
-              }
-
-            ];
-                        /*
+                            /*
              * ============================================================
              * Helper Functions
              * ============================================================
@@ -104,12 +106,6 @@ jobs:
 
             /*
              * Returns the answer beneath an Issue Form heading.
-             *
-             * Example:
-             *
-             * ### Product
-             *
-             * ScriptSure
              */
             function getIssueFormAnswer(label) {
 
@@ -143,7 +139,7 @@ jobs:
             }
 
             /*
-             * Read every configured Issue Field from the Issue Form.
+             * Read all configured Issue Form values.
              */
             function getIssueFormValues() {
 
@@ -151,7 +147,7 @@ jobs:
 
               for (const field of ISSUE_FIELDS) {
 
-                values[field.label] =
+                values[field.key] =
                   getIssueFormAnswer(field.label);
 
               }
@@ -161,28 +157,7 @@ jobs:
             }
 
             /*
-             * Write parsed values to the Actions log.
-             */
-            function logIssueFormValues(values) {
-
-              core.startGroup("Issue Form Values");
-
-              for (const field of ISSUE_FIELDS) {
-
-                const value = values[field.label];
-
-                core.info(
-                  `${field.label}: ${value ?? "(none)"}`
-                );
-
-              }
-
-              core.endGroup();
-
-            }
-
-            /*
-             * Find the configured option ID for a field value.
+             * Look up the GitHub option ID for a selected value.
              */
             function getOptionId(field, value) {
 
@@ -199,6 +174,25 @@ jobs:
               return optionId;
 
             }
+
+            /*
+             * Log the parsed Issue Form values.
+             */
+            function logIssueFormValues(values) {
+
+              core.startGroup("Issue Form Values");
+
+              for (const field of ISSUE_FIELDS) {
+
+                core.info(
+                  `${field.label}: ${values[field.key] ?? "(none)"}`
+                );
+
+              }
+
+              core.endGroup();
+
+            }
                         /*
              * ============================================================
              * GitHub Issue Field Updates
@@ -206,7 +200,7 @@ jobs:
              */
 
             /*
-             * Set a single Issue Field.
+             * Set a single GitHub Issue Field.
              */
             async function setIssueField(field, value) {
 
@@ -231,8 +225,12 @@ jobs:
                   setIssueFieldValue(
                     input: {
                       issueId: $issueId
-                      fieldId: $fieldId
-                      singleSelectOptionId: $optionId
+                      issueFields: [
+                        {
+                          fieldId: $fieldId
+                          singleSelectOptionId: $optionId
+                        }
+                      ]
                     }
                   ) {
 
@@ -264,7 +262,7 @@ jobs:
 
               for (const field of ISSUE_FIELDS) {
 
-                const value = values[field.label];
+                const value = values[field.key];
 
                 if (!value) {
 
@@ -334,4 +332,8 @@ jobs:
               );
 
             }
+
+              }
+
+            ];
             

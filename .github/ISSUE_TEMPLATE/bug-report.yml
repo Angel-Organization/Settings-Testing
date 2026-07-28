@@ -3,53 +3,22 @@ description: Report a bug or unexpected behavior.
 type: Bug
 
 body:
-       
   - type: markdown
     attributes:
-      value: "## Classification"
-      
-  - type: dropdown
-    id: product
-    attributes:
-      label: Product
-      options:
-        - ScriptSure
-        - VetWay
-        - Exchange
-
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Priority
-      options:
-        - Prod Critical
-        - P0
-        - P1
-        - P2
-        - P3
-
-  - type: dropdown
-    id: source
-    attributes:
-      label: Source
-      options:
-        - Customer
-        - QA
-        - Demo
-        - Support
-        - Internal Testing
-        - Other
+      value: |
+        Please provide enough information for someone else to understand, reproduce, and prioritize the issue.
 
   - type: markdown
     attributes:
-      value: "## Details"
+      value: "## Bug Details"
 
   - type: textarea
     id: summary
     attributes:
       label: Summary
       description: Briefly describe the issue.
-      placeholder: One or two sentences describing the problem.
+      placeholder: |
+        Describe what happened, where it occurred, and why it is a problem.
     validations:
       required: true
 
@@ -57,6 +26,7 @@ body:
     id: steps
     attributes:
       label: Steps to Reproduce
+      description: How can someone reproduce the issue?
       placeholder: |
         1. Go to...
         2. Click...
@@ -66,18 +36,55 @@ body:
       required: true
 
   - type: textarea
-    id: expected_behavior
+    id: expected
     attributes:
-      label: Expected Behavior
-      placeholder: What should have happened?
+      label: Expected Result
+      description: What should have happened?
     validations:
       required: true
 
-  - type: textarea
-    id: actual_behavior
+  - type: markdown
     attributes:
-      label: Actual Behavior
-      placeholder: What actually happened?
+      value: "## Classification"
+
+  - type: dropdown
+    id: product
+    attributes:
+      label: Product
+      description: Which product is affected?
+      options:
+        - ScriptSure
+        - VetWay
+        - Exchange
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Initial Priority
+      description: Select your best estimate. This may be updated during triage.
+      options:
+        - Prod Critical
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source
+      description: How was this issue discovered?
+      options:
+        - Customer
+        - QA
+        - Demo
+        - Support
+        - Internal Testing
+        - Other
     validations:
       required: true
 
@@ -89,16 +96,17 @@ body:
     id: environment
     attributes:
       label: Environment
+      description: Include any relevant environment information.
       placeholder: |
-        Environment:
-        User Type:
-        User Email:
-        Browser:
-        OS:
-        Version:
+        - Environment:
+        - User Type:
+        - User Email:
+        - Browser:
+        - Operating System:
+        - Version:
 
   - type: textarea
-    id: additional_context
+    id: attachments
     attributes:
-      label: Additional Context
-      description: Include screenshots, recordings, logs, stack traces, or any other helpful information.
+      label: Attachments & Additional Context
+      description: Include screenshots, recordings, logs, stack traces, or any additional information that may help diagnose the issue.

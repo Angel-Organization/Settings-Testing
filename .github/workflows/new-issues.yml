@@ -25,7 +25,7 @@ jobs:
 
             /*
              * ============================================================
-             * Issue Information
+             * Issue
              * ============================================================
              */
 
@@ -39,119 +39,112 @@ jobs:
              * Repository Issue Fields
              * ============================================================
              *
-             * Add additional fields by appending another object to this array.
+             * Each object maps:
+             *   - Issue Form heading
+             *   - GitHub Issue Field
+             *   - Option IDs
+             *
+             * To support another field, simply add another object.
              */
 
             const ISSUE_FIELDS = [
 
               {
                 key: "product",
-
                 label: "Product",
-
                 fieldId: "IFSS_kgDOAqu9dA",
 
                 options: {
-
                   ScriptSure: "IFSSO_kgDOBKyrFQ",
                   VetWay: "IFSSO_kgDOBKyrFg",
                   Exchange: "IFSSO_kgDOBKyrFw"
-
                 }
 
               },
 
               {
                 key: "priority",
-
                 label: "Priority",
-
                 fieldId: "IFSS_kgDOAqcSiw",
 
                 options: {
-
                   "PROD Critical": "IFSSO_kgDOBKR5-Q",
                   P0: "IFSSO_kgDOBKyRWg",
                   P1: "IFSSO_kgDOBKR5-g",
                   P2: "IFSSO_kgDOBKR5-w",
                   P3: "IFSSO_kgDOBKR5_A",
                   P4: "IFSSO_kgDOBKyRWw"
-
                 }
 
               },
 
               {
                 key: "source",
-
                 label: "Source",
-
                 fieldId: "IFSS_kgDOAqu99Q",
 
                 options: {
-
                   Customer: "IFSSO_kgDOBKysHA",
                   QA: "IFSSO_kgDOBKysHQ",
                   Demo: "IFSSO_kgDOBKysHg",
                   Support: "IFSSO_kgDOBKysHw",
                   "Internal Testing": "IFSSO_kgDOBKysIA",
                   Other: "IFSSO_kgDOBKysIQ"
-
                 }
+
               }
 
             ];
-                            /*
+                        /*
              * ============================================================
              * Helper Functions
              * ============================================================
              */
 
             /*
-             * Returns the answer beneath an Issue Form heading.
+             * Parse the Issue Form into a dictionary of values.
+             *
+             * Example:
+             *
+             * {
+             *   Product: "ScriptSure",
+             *   Priority: "P2",
+             *   Source: "Demo"
+             * }
              */
-            function getIssueFormAnswer(label) {
-
-              const escapedLabel =
-                label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-              const pattern = new RegExp(
-                `(?:^|\\n)###\\s+${escapedLabel}\\s*\\n+([\\s\\S]*?)(?=\\n###\\s+|$)`,
-                "i"
-              );
-
-              const match = issueBody.match(pattern);
-
-              if (!match) {
-                return null;
-              }
-
-              const answer = match[1]
-                .replace(/<!--[\s\S]*?-->/g, "")
-                .trim();
-
-              if (
-                answer === "" ||
-                /^_No response_$/i.test(answer)
-              ) {
-                return null;
-              }
-
-              return answer;
-
-            }
-
-            /*
-             * Read all configured Issue Form values.
-             */
-            function getIssueFormValues() {
+            function parseIssueForm() {
 
               const values = {};
 
-              for (const field of ISSUE_FIELDS) {
+              const sections = issueBody
+                .split(/\n(?=### )/);
 
-                values[field.key] =
-                  getIssueFormAnswer(field.label);
+              for (const section of sections) {
+
+                const lines = section.trim().split("\n");
+
+                if (!lines[0]?.startsWith("### ")) {
+                  continue;
+                }
+
+                const label = lines[0]
+                  .replace(/^### /, "")
+                  .trim();
+
+                const value = lines
+                  .slice(1)
+                  .join("\n")
+                  .replace(/<!--[\s\S]*?-->/g, "")
+                  .trim();
+
+                if (
+                  value === "" ||
+                  /^_No response_$/i.test(value)
+                ) {
+                  continue;
+                }
+
+                values[label] = value;
 
               }
 
@@ -160,7 +153,7 @@ jobs:
             }
 
             /*
-             * Look up the GitHub option ID for a selected value.
+             * Return the configured option ID.
              */
             function getOptionId(field, value) {
 
@@ -179,7 +172,7 @@ jobs:
             }
 
             /*
-             * Log the parsed Issue Form values.
+             * Log parsed Issue Form values.
              */
             function logIssueFormValues(values) {
 
@@ -188,7 +181,7 @@ jobs:
               for (const field of ISSUE_FIELDS) {
 
                 core.info(
-                  `${field.label}: ${values[field.key] ?? "(none)"}`
+                  `${field.label}: ${values[field.label] ?? "(none)"}`
                 );
 
               }
@@ -198,22 +191,63 @@ jobs:
             }
                         /*
              * ============================================================
-             * GitHub Issue Field Updates
+             * Build GraphQL Payload
              * ============================================================
              */
 
             /*
-             * Set a single GitHub Issue Field.
+             * Build the Issue Field payload for GraphQL.
              */
-            async function setIssueField(field, value) {
+            function buildIssueFields(values) {
 
-              const optionId = getOptionId(
-                field,
-                value
-              );
+              const issueFields = [];
+
+              for (const field of ISSUE_FIELDS) {
+
+                const value = values[field.label];
+
+                if (!value) {
+
+                  core.info(
+                    `Skipping ${field.label} (no value)`
+                  );
+
+                  continue;
+
+                }
+
+                issueFields.push({
+
+                  fieldId: field.fieldId,
+
+                  singleSelectOptionId:
+                    getOptionId(field, value)
+
+                });
+
+              }
+
+              return issueFields;
+
+            }
+
+            /*
+             * Update all configured Issue Fields.
+             */
+            async function updateIssueFields(issueFields) {
+
+              if (issueFields.length === 0) {
+
+                core.info(
+                  "No Issue Fields to update."
+                );
+
+                return;
+
+              }
 
               core.info(
-                `Setting ${field.label} → ${value}`
+                `Updating ${issueFields.length} Issue Field(s)...`
               );
 
               await github.graphql(
@@ -221,19 +255,13 @@ jobs:
                 `
                 mutation(
                   $issueId: ID!
-                  $fieldId: ID!
-                  $optionId: ID!
+                  $issueFields: [IssueFieldCreateOrUpdateInput!]!
                 ) {
 
                   setIssueFieldValue(
                     input: {
                       issueId: $issueId
-                      issueFields: [
-                        {
-                          fieldId: $fieldId
-                          singleSelectOptionId: $optionId
-                        }
-                      ]
+                      issueFields: $issueFields
                     }
                   ) {
 
@@ -248,43 +276,10 @@ jobs:
 
                 {
                   issueId,
-                  fieldId: field.fieldId,
-                  optionId
+                  issueFields
                 }
 
               );
-
-            }
-
-            /*
-             * Update every configured Issue Field.
-             */
-            async function updateIssueFields(values) {
-
-              core.startGroup("Updating Issue Fields");
-
-              for (const field of ISSUE_FIELDS) {
-
-                const value = values[field.key];
-
-                if (!value) {
-
-                  core.info(
-                    `Skipping ${field.label} (no value)`
-                  );
-
-                  continue;
-
-                }
-
-                await setIssueField(
-                  field,
-                  value
-                );
-
-              }
-
-              core.endGroup();
 
             }
                         /*
@@ -299,19 +294,21 @@ jobs:
                 `Initializing Issue #${issueNumber}`
               );
 
-              const values =
-                getIssueFormValues();
+              const values = parseIssueForm();
 
               logIssueFormValues(
                 values
               );
 
+              const issueFields =
+                buildIssueFields(values);
+
               await updateIssueFields(
-                values
+                issueFields
               );
 
               core.notice(
-                `Issue #${issueNumber} initialized successfully.`
+                `Successfully initialized Issue #${issueNumber}.`
               );
 
             }

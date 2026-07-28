@@ -7,8 +7,7 @@ body:
   - type: markdown
     attributes:
       value: "## Classification"
-      description:  Please provide as much information as possible. Initial classification helps automate triage and may be updated later.
-
+      
   - type: dropdown
     id: product
     attributes:

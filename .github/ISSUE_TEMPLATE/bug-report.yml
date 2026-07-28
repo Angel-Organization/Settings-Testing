@@ -18,20 +18,7 @@ body:
       label: Summary
       description: Briefly describe the issue.
       placeholder: |
-        Describe what happened, where it occurred, and why it is a problem.
-    validations:
-      required: true
-
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to Reproduce
-      description: How can someone reproduce the issue?
-      placeholder: |
-        1. Go to...
-        2. Click...
-        3. Enter...
-        4. Observe...
+        Describe what happened and why it is a problem.
     validations:
       required: true
 
@@ -40,6 +27,19 @@ body:
     attributes:
       label: Expected Result
       description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Describe how to reproduce the issue. If you're unsure, describe what you were doing when you encountered it.
+      placeholder: |
+        1. Go to...
+        2. Click...
+        3. Enter...
+        4. Observe...
     validations:
       required: true
 
@@ -62,7 +62,7 @@ body:
   - type: dropdown
     id: priority
     attributes:
-      label: Initial Priority
+      label: Priority
       description: Select your best estimate. This may be updated during triage.
       options:
         - Prod Critical
@@ -106,7 +106,7 @@ body:
         - Version:
 
   - type: textarea
-    id: attachments
+    id: additional context
     attributes:
-      label: Attachments & Additional Context
-      description: Include screenshots, recordings, logs, stack traces, or any additional information that may help diagnose the issue.
+      label: Additional Context
+      description: Include any additional information that may help diagnose the issue.

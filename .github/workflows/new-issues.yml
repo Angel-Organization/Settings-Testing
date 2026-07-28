@@ -1,4 +1,4 @@
-name: Initialize Issue
+name: Initialize Issue Fields
 
 on:
   issues:
@@ -10,22 +10,21 @@ permissions:
   contents: read
   issues: write
 
-concurrency:
-  group: initialize-issue-${{ github.event.issue.number }}
-  cancel-in-progress: false
-
 jobs:
   initialize:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Initialize Issue
-        uses: actions/github-script@v8
-
+      - uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
           script: |
+
+            /*
+             * ============================================================
+             * Issue Information
+             * ============================================================
+             */
 
             const issue = context.payload.issue;
             const issueBody = issue.body ?? "";
@@ -34,14 +33,18 @@ jobs:
 
             /*
              * ============================================================
-             * Configuration
+             * Repository Issue Fields
              * ============================================================
+             *
+             * Each object represents one GitHub Issue Field.
+             *
+             * To add another field in the future, simply add another object
+             * to this array. No other code changes should be required.
              */
 
-            const ISSUE_FIELDS = {
+            const ISSUE_FIELDS = [
 
-              product: {
-
+              {
                 label: "Product",
 
                 fieldId: "IFSS_kgDOAqu9dA",
@@ -56,8 +59,7 @@ jobs:
 
               },
 
-              priority: {
-
+              {
                 label: "Priority",
 
                 fieldId: "IFSS_kgDOAqcSiw",
@@ -75,8 +77,7 @@ jobs:
 
               },
 
-              source: {
-
+              {
                 label: "Source",
 
                 fieldId: "IFSS_kgDOAqu99Q",
@@ -94,8 +95,14 @@ jobs:
 
               }
 
-            };
+            ];
                         /*
+             * ============================================================
+             * Helper Functions
+             * ============================================================
+             */
+
+            /*
              * Returns the answer beneath an Issue Form heading.
              *
              * Example:
@@ -136,15 +143,15 @@ jobs:
             }
 
             /*
-             * Read every configured Issue Form field.
+             * Read every configured Issue Field from the Issue Form.
              */
             function getIssueFormValues() {
 
               const values = {};
 
-              for (const [key, field] of Object.entries(ISSUE_FIELDS)) {
+              for (const field of ISSUE_FIELDS) {
 
-                values[key] =
+                values[field.label] =
                   getIssueFormAnswer(field.label);
 
               }
@@ -154,16 +161,18 @@ jobs:
             }
 
             /*
-             * Write the parsed values to the Actions log.
+             * Write parsed values to the Actions log.
              */
             function logIssueFormValues(values) {
 
               core.startGroup("Issue Form Values");
 
-              for (const [key, value] of Object.entries(values)) {
+              for (const field of ISSUE_FIELDS) {
+
+                const value = values[field.label];
 
                 core.info(
-                  `${key}: ${value ?? "(none)"}`
+                  `${field.label}: ${value ?? "(none)"}`
                 );
 
               }
@@ -171,29 +180,45 @@ jobs:
               core.endGroup();
 
             }
-                        /*
-             * Set a single Issue Field.
+
+            /*
+             * Find the configured option ID for a field value.
              */
-            async function setIssueField(issueId, field, value) {
+            function getOptionId(field, value) {
 
               const optionId = field.options[value];
 
               if (!optionId) {
 
                 throw new Error(
-                  `"${value}" is not a configured option for "${field.label}".`
+                  `"${value}" is not a valid option for "${field.label}".`
                 );
 
               }
+
+              return optionId;
+
+            }
+                        /*
+             * ============================================================
+             * GitHub Issue Field Updates
+             * ============================================================
+             */
+
+            /*
+             * Set a single Issue Field.
+             */
+            async function setIssueField(field, value) {
+
+              const optionId = getOptionId(
+                field,
+                value
+              );
 
               core.info(
                 `Setting ${field.label} → ${value}`
               );
 
-              /*
-               * TODO:
-               * Replace this GraphQL mutation with the final version.
-               */
               await github.graphql(
 
                 `
@@ -210,9 +235,11 @@ jobs:
                       singleSelectOptionId: $optionId
                     }
                   ) {
+
                     issue {
                       number
                     }
+
                   }
 
                 }
@@ -235,19 +262,14 @@ jobs:
 
               core.startGroup("Updating Issue Fields");
 
-              for (const field of Object.values(ISSUE_FIELDS)) {
+              for (const field of ISSUE_FIELDS) {
 
-                const value =
-                  values[
-                    Object.keys(ISSUE_FIELDS).find(
-                      key => ISSUE_FIELDS[key] === field
-                    )
-                  ];
+                const value = values[field.label];
 
                 if (!value) {
 
                   core.info(
-                    `Skipping ${field.label}`
+                    `Skipping ${field.label} (no value)`
                   );
 
                   continue;
@@ -255,7 +277,6 @@ jobs:
                 }
 
                 await setIssueField(
-                  issueId,
                   field,
                   value
                 );
@@ -265,3 +286,52 @@ jobs:
               core.endGroup();
 
             }
+                        /*
+             * ============================================================
+             * Main
+             * ============================================================
+             */
+
+            async function main() {
+
+              core.info(
+                `Initializing Issue #${issueNumber}`
+              );
+
+              const values =
+                getIssueFormValues();
+
+              logIssueFormValues(
+                values
+              );
+
+              await updateIssueFields(
+                values
+              );
+
+              core.notice(
+                `Issue #${issueNumber} initialized successfully.`
+              );
+
+            }
+
+            /*
+             * ============================================================
+             * Execute
+             * ============================================================
+             */
+
+            try {
+
+              await main();
+
+            } catch (error) {
+
+              core.error(error);
+
+              core.setFailed(
+                error.message ?? String(error)
+              );
+
+            }
+            

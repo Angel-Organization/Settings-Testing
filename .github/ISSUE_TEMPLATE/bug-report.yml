@@ -6,53 +6,37 @@ body:
   - type: markdown
     attributes:
       value: |
-        <h2>Initial Classification</h2>
+        Please provide as much information as possible. Initial classification helps automate triage and may be updated later.
 
-        <table>
-          <tr>
-            <th style="padding-right: 40px;">Product</th>
-            <th style="padding-right: 40px;">Priority</th>
-            <th>Source</th>
-          </tr>
-        </table>
-
-        Please complete the information below. This information will be used to automatically classify and triage the issue.
+  - type: markdown
+    attributes:
+      value: "## Classification"
 
   - type: dropdown
     id: product
     attributes:
       label: Product
-      description: Which product is affected?
       options:
         - ScriptSure
         - VetWay
         - Exchange
-    validations:
-      required: false
 
   - type: dropdown
     id: priority
     attributes:
       label: Initial Priority
-      description: |
-        Select the initial priority for this issue.
-        • Use Prod Critical for ScriptSure critical issues.
-        • Use P0 for VetWay critical issues.
-        • Priority may be adjusted during triage.
+      description: Initial estimate only. This may be updated during triage.
       options:
         - Prod Critical
         - P0
         - P1
         - P2
         - P3
-    validations:
-      required: false
 
   - type: dropdown
     id: source
     attributes:
       label: Source
-      description: How was this issue discovered?
       options:
         - Customer
         - QA
@@ -60,31 +44,28 @@ body:
         - Support
         - Internal Testing
         - Other
-    validations:
-      required: false
+
+  - type: markdown
+    attributes:
+      value: "## Details"
 
   - type: textarea
     id: summary
     attributes:
       label: Summary
       description: Briefly describe the issue.
-      placeholder: A concise description of the bug.
+      placeholder: One or two sentences describing the problem.
     validations:
       required: true
 
-  - type: textarea
-    id: expected_behavior
+  - type: markdown
     attributes:
-      label: Expected Behavior
-      description: What should have happened?
-    validations:
-      required: true
+      value: "## Reproduction"
 
   - type: textarea
     id: steps
     attributes:
       label: Steps to Reproduce
-      description: Provide the steps needed to reproduce the issue.
       placeholder: |
         1. Go to...
         2. Click...
@@ -93,11 +74,34 @@ body:
     validations:
       required: true
 
+  - type: markdown
+    attributes:
+      value: "## Behavior"
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual Behavior
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Supporting Information"
+
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Provide any relevant environment information.
       placeholder: |
         Environment:
         User Type:
@@ -110,4 +114,4 @@ body:
     id: additional_context
     attributes:
       label: Additional Context
-      description: Include screenshots, recordings, logs, stack traces, or any other information that may help diagnose the issue.
+      description: Include screenshots, recordings, logs, stack traces, or any other helpful information.

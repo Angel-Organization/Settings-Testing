@@ -3,14 +3,11 @@ description: Report a bug or unexpected behavior.
 type: Bug
 
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Please provide as much information as possible. Initial classification helps automate triage and may be updated later.
-
+       
   - type: markdown
     attributes:
       value: "## Classification"
+      description:  Please provide as much information as possible. Initial classification helps automate triage and may be updated later.
 
   - type: dropdown
     id: product
@@ -24,8 +21,7 @@ body:
   - type: dropdown
     id: priority
     attributes:
-      label: Initial Priority
-      description: Initial estimate only. This may be updated during triage.
+      label: Priority
       options:
         - Prod Critical
         - P0
@@ -58,10 +54,6 @@ body:
     validations:
       required: true
 
-  - type: markdown
-    attributes:
-      value: "## Reproduction"
-
   - type: textarea
     id: steps
     attributes:
@@ -73,10 +65,6 @@ body:
         4. Observe...
     validations:
       required: true
-
-  - type: markdown
-    attributes:
-      value: "## Behavior"
 
   - type: textarea
     id: expected_behavior

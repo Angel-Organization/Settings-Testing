@@ -1,0 +1,377 @@
+name: Sync ScriptSure Project
+
+on:
+  issues:
+    types:
+      - edited
+      - labeled
+      - unlabeled
+      - reopened
+
+permissions:
+  contents: read
+  issues: read
+
+# Prevent multiple runs for the same issue.
+concurrency:
+  group: sync-scriptsure-project-${{ github.event.issue.id }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_OWNER: daw-systems
+  PROJECT_OWNER_TYPE: organization
+  PROJECT_NUMBER: 5
+
+jobs:
+
+  sync-project:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ------------------------------------------------------------
+      # Authenticate as the GitHub App
+      # ------------------------------------------------------------
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.ACTIONS_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+          owner: ${{ env.PROJECT_OWNER }}
+
+      # ------------------------------------------------------------
+      # Run Synchronization
+      # ------------------------------------------------------------
+
+      - name: Synchronize Project
+        uses: actions/github-script@v8
+
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+
+          script: |
+            const core = require("@actions/core");
+            const issue = context.payload.issue;
+
+            /*
+             * ============================================================
+             * Configuration
+             * ============================================================
+             */
+            
+            const ProjectConfig = {
+              fields: {
+                Status: {
+                  id: "PVTSSF_xxxxxxxxx",
+                  options: {
+                    "To Do": "xxxxxxxx",
+                    "In Development": "xxxxxxxx",
+                    "QA Testing": "xxxxxxxx",
+                    "QA Passed": "xxxxxxxx",
+                    Test: "xxxxxxxx",
+                    Stage: "xxxxxxxx",
+                    Production: "xxxxxxxx",
+                    Blocked: "xxxxxxxx",
+                    Done: "xxxxxxxx"
+                  }
+                },
+                Sprint: {
+                  id: "PVTIF_xxxxxxxxx",
+                  type: "iteration"
+                },
+                "Blocked Reason": {
+                  id: "PVTTF_xxxxxxxxx"
+                }
+              }
+            };
+
+            /*
+             * ============================================================
+             * Helpers
+             * ============================================================
+             */
+            
+            async function getProjectItem() {
+            
+              const query = `
+                query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    issue(number:$number) {
+                      projectItems(first:100) {
+                        nodes {
+                          id
+                          project {
+                            number
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+            
+              const response = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: issue.number
+              });
+            
+              const item = response.repository.issue.projectItems.nodes.find(
+                item => item.project.number === Number(process.env.PROJECT_NUMBER)
+              );
+            
+              if (!item)
+                throw new Error("Issue is not in the configured project.");
+            
+              return item.id;
+            
+            }
+            
+            async function getProjectState(projectItemId) {
+            
+              const query = `
+                query($id:ID!) {
+                  node(id:$id) {
+                    ... on ProjectV2Item {
+                      fieldValues(first:50) {
+                        nodes {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            name
+                            field {
+                              ... on ProjectV2SingleSelectField {
+                                name
+                              }
+                            }
+                          }
+                          ... on ProjectV2ItemFieldTextValue {
+                            text
+                            field {
+                              ... on ProjectV2Field {
+                                name
+                              }
+                            }
+                          }
+                          ... on ProjectV2ItemFieldIterationValue {
+                            title
+                            iterationId
+                            field {
+                              ... on ProjectV2IterationField {
+                                name
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+            
+              const response = await github.graphql(query, {
+                id: projectItemId
+              });
+            
+              const project = {};
+            
+              for (const field of response.node.fieldValues.nodes) {
+            
+                const fieldName = field.field.name;
+            
+                project[fieldName] =
+                  field.name ??
+                  field.text ??
+                  field.title ??
+                  null;
+            
+              }
+            
+              return project;
+            
+            }
+            
+            async function getCurrentIteration() {
+            
+              const query = `
+                query($owner:String!, $number:Int!) {
+                  organization(login:$owner) {
+                    projectV2(number:$number) {
+                      field(name:"Sprint") {
+                        ... on ProjectV2IterationField {
+                          configuration {
+                            iterations {
+                              id
+                              title
+                              startDate
+                              duration
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+            
+              const response = await github.graphql(query, {
+                owner: process.env.PROJECT_OWNER,
+                number: Number(process.env.PROJECT_NUMBER)
+              });
+            
+              const today = new Date();
+            
+              return response.organization.projectV2.field.configuration.iterations.find(
+                iteration => {
+                  const start = new Date(iteration.startDate);
+                  const end = new Date(start);
+                  end.setDate(end.getDate() + iteration.duration);
+            
+                  return today >= start && today < end;
+                }
+              );
+            
+            }
+            
+            async function setProjectField(projectItemId, fieldName, value) {
+            
+              const field = ProjectConfig.fields[fieldName];
+            
+              if (!field)
+                throw new Error(`Unknown field: ${fieldName}`);
+            
+              const input = {
+                projectId: process.env.PROJECT_ID,
+                itemId: projectItemId,
+                fieldId: field.id
+              };
+            
+              if (field.type === "iteration") {
+            
+                const iteration = await getCurrentIteration();
+            
+                input.value = {
+                  iterationId: iteration.id
+                };
+            
+              } else {
+            
+                input.value = {
+                  singleSelectOptionId: field.options[value]
+                };
+            
+              }
+            
+              await github.graphql(`
+                mutation($input:UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input:$input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                input
+              });
+            
+            }
+
+            /*
+             * ============================================================
+             * Synchronization
+             * ============================================================
+             */
+            
+            async function syncStatus(projectItemId, project) {
+            
+              let status = "To Do";
+            
+              if (issue.labels.some(label => label.name === "status:dev"))
+                status = "In Development";
+            
+              if (issue.labels.some(label => label.name === "status:qa-testing"))
+                status = "QA Testing";
+            
+              if (issue.labels.some(label => label.name === "status:qa-passed"))
+                status = "QA Passed";
+            
+              if (issue.labels.some(label => label.name === "deployment:test"))
+                status = "Test";
+            
+              if (issue.labels.some(label => label.name === "deployment:stage"))
+                status = "Stage";
+            
+              if (issue.labels.some(label => label.name === "deployment:prod"))
+                status = "Production";
+            
+              if (project["Blocked Reason"])
+                status = "Blocked";
+            
+              if (issue.state === "closed")
+                status = "Done";
+            
+              if (project.Status !== status) {
+                await setProjectField(
+                  projectItemId,
+                  "Status",
+                  status
+                );
+              }
+            
+            }
+            
+            async function syncSprint(projectItemId) {
+            
+              const isProdCritical = issue.labels.some(
+                label => label.name === "priority:prod-critical"
+              );
+            
+              if (!isProdCritical)
+                return;
+            
+              const currentIteration = await getCurrentIteration();
+            
+              await setProjectField(
+                projectItemId,
+                "Sprint",
+                currentIteration.id
+              );
+            
+            }
+
+            /*
+             * ============================================================
+             * Main
+             * ============================================================
+             */
+            
+            async function runProjectSync() {
+            
+              core.info(
+                `Synchronizing Issue #${issue.number}`
+              );
+            
+              const projectItemId =
+                await getProjectItem();
+            
+              const project =
+                await getProjectState(projectItemId);
+            
+              await syncStatus(
+                projectItemId,
+                project
+              );
+            
+              await syncSprint(
+                projectItemId
+              );
+            
+              core.info(
+                `Synchronization complete.`
+              );
+            
+            }
+            
+            runProjectSync()
+              .catch(core.setFailed);

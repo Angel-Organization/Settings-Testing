@@ -6,27 +6,90 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please complete the information below. This information will be used to automatically classify and triage the request.
+        Please provide enough information for someone else to understand, scope, and prioritize this request.
 
-  - type: checkboxes
+  - type: markdown
+    attributes:
+      value: "## Feature Details"
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: |
+        Briefly describe the requested feature or enhancement.
+
+        If available, attach any existing specifications, mockups, or other supporting documents to this issue.
+      placeholder: |
+        Example:
+        Allow supporting users to save frequently used pharmacies as favorites.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      multiple: false
+      description: |
+        Is this request for a completely new feature or an enhancement that improves an existing one?
+      options:
+        - New Feature
+        - Enhancement
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Opportunity
+      description: What problem are you trying to solve, or what opportunity does this address?
+      placeholder: |
+        Example:
+
+        Supporting users spend time searching for the same pharmacies multiple times each day.
+        Saving favorite pharmacies would reduce repetitive work and speed up prescription processing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Describe what must be true for this request to be considered complete.
+      placeholder: |
+        Example:
+
+        - Supporting users can save pharmacies as favorites.
+        - Favorite pharmacies are available when creating a prescription.
+        - Users can remove a pharmacy from their favorites.
+        - Only the current user's favorites are displayed.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Classification"
+
+  - type: dropdown
     id: product
     attributes:
       label: Product
+      multiple: false
       description: Which product is this request for?
       options:
-        - label: ScriptSure
-        - label: VetWay
-        - label: Exchange
+        - ScriptSure
+        - VetWay
+        - Exchange
     validations:
-      required: false
+      required: true
 
   - type: dropdown
     id: priority
     attributes:
-      label: Initial Priority
-      description: |
-        Select the initial priority for this request.
-        Priority may be adjusted during triage.
+      label: Priority
+      multiple: false
+      description: Select your best estimate. This may be updated during triage.
       options:
         - Prod Critical
         - P0
@@ -34,81 +97,37 @@ body:
         - P2
         - P3
     validations:
-      required: false
+      required: true
 
   - type: dropdown
     id: source
     attributes:
       label: Source
+      multiple: false
       description: Where did this request originate?
       options:
         - Customer
         - QA
         - Demo
         - Support
-        - Internal Request
+        - Internal Testing
         - Other
     validations:
-      required: false
-
-  - type: textarea
-    id: summary
-    attributes:
-      label: Summary
-      description: Briefly describe the requested feature.
-      placeholder: A concise description of the feature request.
-    validations:
       required: true
 
-  - type: textarea
-    id: problem
+  - type: markdown
     attributes:
-      label: Problem / Opportunity
-      description: What problem does this solve or what opportunity does it address?
-      placeholder: |
-        Describe the current pain point or opportunity.
-    validations:
-      required: true
+      value: "## Supporting Information"
 
   - type: textarea
-    id: proposed_solution
-    attributes:
-      label: Proposed Solution
-      description: Describe the desired functionality.
-      placeholder: |
-        What would you like the product to do?
-    validations:
-      required: true
-
-  - type: textarea
-    id: business_value
-    attributes:
-      label: Business Value
-      description: Why is this important?
-      placeholder: |
-        Examples:
-        • Saves users time
-        • Improves workflow
-        • Supports a customer request
-        • Required for compliance
-        • Reduces support tickets
-    validations:
-      required: true
-
-  - type: textarea
-    id: acceptance_criteria
-    attributes:
-      label: Acceptance Criteria
-      description: What would need to be true for this request to be considered complete?
-      placeholder: |
-        • User can...
-        • System displays...
-        • Data is...
-    validations:
-      required: false
-
-  - type: textarea
-    id: additional_context
+    id: context
     attributes:
       label: Additional Context
-      description: Include mockups, screenshots, examples, links, or any other supporting information.
+      description: Include any additional information that may help evaluate this request.
+      placeholder: |
+        Examples:
+        - Related issue: #1234
+        - Link to documentation or specification
+        - Screenshots or mockups
+        - Regulatory or business requirements
+        - Additional implementation considerations

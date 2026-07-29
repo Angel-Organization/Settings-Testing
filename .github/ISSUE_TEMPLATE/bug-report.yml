@@ -51,8 +51,8 @@ body:
     id: product
     attributes:
       label: Product
-      multiple: false
-      description: Which product is affected?
+      multiple: true
+      description: Which product is affected? Select one primary product.
       options:
         - ScriptSure
         - VetWay
@@ -65,7 +65,7 @@ body:
     id: priority
     attributes:
       label: Priority
-      multiple: false
+      multiple: true
       description: Select your best estimate. This may be updated during triage.
       options:
         - Prod Critical
@@ -80,8 +80,8 @@ body:
     id: source
     attributes:
       label: Source
-      multiple: false
-      description: How was this issue discovered?
+      multiple: true
+      description: How was this issue discovered? Select one primary source.
       options:
         - Customer
         - QA

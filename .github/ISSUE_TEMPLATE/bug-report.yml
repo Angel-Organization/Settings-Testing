@@ -51,6 +51,7 @@ body:
     id: product
     attributes:
       label: Product
+      multiple: true
       description: Which product is affected?
       options:
         - ScriptSure
@@ -79,6 +80,7 @@ body:
     id: source
     attributes:
       label: Source
+      multiple: true
       description: How was this issue discovered?
       options:
         - Customer

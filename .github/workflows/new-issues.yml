@@ -299,7 +299,11 @@ jobs:
               await updateIssueFields(
                 issueFields
               );
-
+             
+              await updateIssueType(
+                values
+              );
+              
               core.notice(
                 `Successfully initialized Issue #${issueNumber}.`
               );

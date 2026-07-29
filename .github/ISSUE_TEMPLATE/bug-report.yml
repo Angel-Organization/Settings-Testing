@@ -27,6 +27,8 @@ body:
     attributes:
       label: Expected Result
       description: What should have happened?
+      placeholder: |
+        Describe what you expected to happen instead.
     validations:
       required: true
 

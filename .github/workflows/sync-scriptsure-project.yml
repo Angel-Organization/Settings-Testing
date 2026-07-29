@@ -25,15 +25,10 @@ env:
 jobs:
 
   sync-project:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      # ------------------------------------------------------------
-      # Authenticate as the GitHub App
-      # ------------------------------------------------------------
-
+    
       - name: Generate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v2
@@ -41,10 +36,6 @@ jobs:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
           owner: ${{ env.PROJECT_OWNER }}
-
-      # ------------------------------------------------------------
-      # Run Synchronization
-      # ------------------------------------------------------------
 
       - name: Synchronize Project
         uses: actions/github-script@v8
@@ -62,30 +53,57 @@ jobs:
              * ============================================================
              */
             
-            const ProjectConfig = {
-              fields: {
-                Status: {
-                  id: "PVTSSF_xxxxxxxxx",
-                  options: {
-                    "To Do": "xxxxxxxx",
-                    "In Development": "xxxxxxxx",
-                    "QA Testing": "xxxxxxxx",
-                    "QA Passed": "xxxxxxxx",
-                    Test: "xxxxxxxx",
-                    Stage: "xxxxxxxx",
-                    Production: "xxxxxxxx",
-                    Blocked: "xxxxxxxx",
-                    Done: "xxxxxxxx"
+            const Config = {
+              
+              project:{
+                fields: {
+                  Status: {
+                    id: "PVTSSF_xxxxxxxxx",
+                    options: {
+                      "To Do": "xxxxxxxx",
+                      "In Development": "xxxxxxxx",
+                      "QA Testing": "xxxxxxxx",
+                      "QA Passed": "xxxxxxxx",
+                      Test: "xxxxxxxx",
+                      Stage: "xxxxxxxx",
+                      Production: "xxxxxxxx",
+                      Blocked: "xxxxxxxx",
+                      Done: "xxxxxxxx"
+                    }
+                  },
+                  Sprint: {
+                    id: "PVTIF_xxxxxxxxx",
+                    type: "iteration"
+                  },
+                  "Blocked Reason": {
+                    id: "PVTTF_xxxxxxxxx"
                   }
-                },
-                Sprint: {
-                  id: "PVTIF_xxxxxxxxx",
-                  type: "iteration"
-                },
-                "Blocked Reason": {
-                  id: "PVTTF_xxxxxxxxx"
                 }
-              }
+              },
+
+              issue: {
+                fields: {
+                  Priority: {
+                    id: "xxxxxxxx",
+                    options: {
+                      ProdCritical: "xxxxxxxx"
+                    }
+                  }
+                }
+              },
+              
+              statusRules = [
+                ["deployed: PROD", "Production"],
+                ["deployed: STAGE", "Stage"],
+                ["deployed: TEST", "Test"],
+                ["QA Passed", "QA Passed"],
+                ["On testing", "QA Testing"],
+                ["In development", "In Development"]
+              ],
+                
+              sprintPriorities = new Set([
+                Config.issue.fields.Priority.options.ProdCritical
+              ])
             };
 
             /*
@@ -130,7 +148,7 @@ jobs:
             
             }
             
-            async function getProjectState(projectItemId) {
+            async function getProjectFields(projectItemId) {
             
               const query = `
                 query($id:ID!) {
@@ -185,11 +203,9 @@ jobs:
                   field.text ??
                   field.title ??
                   null;
-            
               }
             
               return project;
-            
             }
             
             async function getCurrentIteration() {
@@ -231,12 +247,10 @@ jobs:
                   return today >= start && today < end;
                 }
               );
-            
             }
             
             async function setProjectField(projectItemId, fieldName, value) {
-            
-              const field = ProjectConfig.fields[fieldName];
+              const field = Config.project.fields[fieldName];
             
               if (!field)
                 throw new Error(`Unknown field: ${fieldName}`);
@@ -248,19 +262,14 @@ jobs:
               };
             
               if (field.type === "iteration") {
-            
-                const iteration = await getCurrentIteration();
-            
                 input.value = {
                   iterationId: iteration.id
                 };
             
               } else {
-            
                 input.value = {
                   singleSelectOptionId: field.options[value]
                 };
-            
               }
             
               await github.graphql(`
@@ -274,6 +283,38 @@ jobs:
               `, {
                 input
               });
+            }
+
+            async function getPriority() {
+            
+              const query = `
+                query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    issue(number:$number) {
+                      fieldValues(first:50) {
+                        nodes {
+                          ... on IssueFieldSingleSelectValue {
+                            field {
+                              id
+                            }
+                            optionId
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+            
+              const response = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: issue.number
+              });
+            
+              return response.repository.issue.fieldValues.nodes.find(
+                field => field.field.id === Config.issue.fields.Priority.id
+              )?.optionId;
             
             }
 
@@ -283,33 +324,23 @@ jobs:
              * ============================================================
              */
             
+            const issue = context.payload.issue;
+            const labels = new Set(issue.labels.map(label => label.name));
+            
             async function syncStatus(projectItemId, project) {
-            
+              
               let status = "To Do";
-            
-              if (issue.labels.some(label => label.name === "status:dev"))
-                status = "In Development";
-            
-              if (issue.labels.some(label => label.name === "status:qa-testing"))
-                status = "QA Testing";
-            
-              if (issue.labels.some(label => label.name === "status:qa-passed"))
-                status = "QA Passed";
-            
-              if (issue.labels.some(label => label.name === "deployment:test"))
-                status = "Test";
-            
-              if (issue.labels.some(label => label.name === "deployment:stage"))
-                status = "Stage";
-            
-              if (issue.labels.some(label => label.name === "deployment:prod"))
-                status = "Production";
-            
-              if (project["Blocked Reason"])
+
+              if (project["Blocked Reason"]) {
                 status = "Blocked";
-            
-              if (issue.state === "closed")
-                status = "Done";
+              } else {
+                for (const [label, value] of Config.statusRules) {
+                  if (labels.has(label)) {
+                    status = value;
+                    break;
+                  }
+                }
+              }
             
               if (project.Status !== status) {
                 await setProjectField(
@@ -322,12 +353,9 @@ jobs:
             }
             
             async function syncSprint(projectItemId) {
+              const priority = await getPriority();
             
-              const isProdCritical = issue.labels.some(
-                label => label.name === "priority:prod-critical"
-              );
-            
-              if (!isProdCritical)
+              if (!Config.sprintPriorities.has(priority))
                 return;
             
               const currentIteration = await getCurrentIteration();
@@ -356,7 +384,7 @@ jobs:
                 await getProjectItem();
             
               const project =
-                await getProjectState(projectItemId);
+                await getProjectFields(projectItemId);
             
               await syncStatus(
                 projectItemId,

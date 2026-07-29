@@ -1,4 +1,4 @@
-name: Initialize Issue Fields
+name: Populate Issue Fields
 
 on:
   issues:
@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Initialize Issue Fields
+      - name: Populate Issue Fields
         uses: actions/github-script@v8
 
         with:

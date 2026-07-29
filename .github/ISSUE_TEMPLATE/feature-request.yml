@@ -11,7 +11,20 @@ body:
   - type: markdown
     attributes:
       value: "## Feature Details"
-
+      
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      multiple: true
+      description: |
+        Is this request for a completely new feature or an enhancement that improves an existing one?
+      options:
+        - New Feature
+        - Enhancement
+    validations:
+      required: true
+      
   - type: textarea
     id: summary
     attributes:
@@ -23,19 +36,6 @@ body:
       placeholder: |
         Example:
         Allow supporting users to save frequently used pharmacies as favorites.
-    validations:
-      required: true
-
-  - type: dropdown
-    id: feature-type
-    attributes:
-      label: Feature Type
-      multiple: false
-      description: |
-        Is this request for a completely new feature or an enhancement that improves an existing one?
-      options:
-        - New Feature
-        - Enhancement
     validations:
       required: true
 
@@ -75,8 +75,8 @@ body:
     id: product
     attributes:
       label: Product
-      multiple: false
-      description: Which product is this request for?
+      multiple: true
+      description: Which product is this request for? Select one primary product.
       options:
         - ScriptSure
         - VetWay
@@ -88,7 +88,7 @@ body:
     id: priority
     attributes:
       label: Priority
-      multiple: false
+      multiple: true
       description: Select your best estimate. This may be updated during triage.
       options:
         - Prod Critical
@@ -103,8 +103,8 @@ body:
     id: source
     attributes:
       label: Source
-      multiple: false
-      description: Where did this request originate?
+      multiple: true
+      description: Where did this request originate? Select one primary source.
       options:
         - Customer
         - QA

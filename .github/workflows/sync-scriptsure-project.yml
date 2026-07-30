@@ -3,6 +3,7 @@ name: Sync ScriptSure Project
 on:
   issues:
     types:
+      - opened
       - edited
       - labeled
       - unlabeled

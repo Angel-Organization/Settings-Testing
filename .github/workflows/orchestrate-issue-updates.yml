@@ -7,7 +7,6 @@
 # - Calls sync-project.yml and supplies it with the necessary project context
 #
 # This workflow is automatically triggered when:
-# - Issue body is edited
 # - Labels are added
 # - Labels are removed
 

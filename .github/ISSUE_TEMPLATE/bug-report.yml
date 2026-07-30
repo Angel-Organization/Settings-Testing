@@ -58,7 +58,6 @@ body:
       options:
         - ScriptSure
         - VetWay
-        - Exchange
       default:
     validations:
       required: true
@@ -70,8 +69,7 @@ body:
       multiple: true
       description: Select your best estimate. This may be updated during triage.
       options:
-        - Prod Critical
-        - P0
+        - PROD Critical
         - P1
         - P2
         - P3

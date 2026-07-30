@@ -80,7 +80,6 @@ body:
       options:
         - ScriptSure
         - VetWay
-        - Exchange
     validations:
       required: true
 

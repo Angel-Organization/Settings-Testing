@@ -40,6 +40,7 @@ jobs:
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+          owner: ${{ inputs.project-owner }}
 
       - name: Add to project
         uses: actions/github-script@v8

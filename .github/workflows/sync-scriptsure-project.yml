@@ -217,7 +217,6 @@ jobs:
             }
             
             async function getCurrentIteration() {
-            
               // Get configured iterations, called "Sprint" in the project
               const query = `
                 query($owner:String!, $number:Int!) {
@@ -318,40 +317,29 @@ jobs:
             }
 
             async function getPriority() {
-              // Get the priority of the issue
-              const query = `
-                query($owner:String!, $repo:String!, $number:Int!) {
-                  repository(owner:$owner, name:$repo) {
-                    issue(number:$number) {
-                      fieldValues(first:50) {
-                        nodes {
-                          ... on IssueFieldSingleSelectValue {
-                            field {
-                              id
-                            }
-                            optionId
-                          }
-                        }
-                      }
-                    }
+              // Get the organization issue field values for this issue
+              const response = await github.request(
+                "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  headers: {
+                    "X-GitHub-Api-Version": "2022-11-28"
                   }
                 }
-              `;
+              );
             
-              const response = await github.graphql(query, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                number: issue.number
-              });
+              // Find the configured Priority field
+              const priority = response.data.find(
+                field => field.node_id === Config.issue.fields.Priority.id
+              );
             
-              // Return the priority id, if it's a priority that is configured to auto-add
-              // the issue to the current sprint
-              return response.repository.issue.fieldValues.nodes.find(
-                field => field.field.id === Config.issue.fields.Priority.id
-              )?.optionId;
-            
+              // Return the priority, if it's supposed to auto-add the issue
+              // to the sprint
+              return priority?.single_select_option?.node_id ?? null;
             }
-
+            
             /*
              * ============================================================
              * Synchronization

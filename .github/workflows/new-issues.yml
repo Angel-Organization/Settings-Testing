@@ -330,5 +330,30 @@ jobs:
 
               core.setFailed(
                 error.message ?? String(error)
-              );
-            }
+                              );
+             }
+                
+  assign-current-sprint-scriptsure:
+    if: github.event.issue.type.name == 'ScriptSure'
+    needs: initialize
+    uses: ./.github/workflows/prod-critical-sprint.yml
+    secrets: inherit
+    with:
+      project-owner: daw-systems
+      project-number: 5
+      project-id: PVT_kwDOD6R9-s4Bbv4y
+      sprint-field-id: PVTIF_lADOD6R9-s4Bbv4yzhXaxnQ
+      prod-critical-priority-id: IFSSO_kgDOBB9kmQ
+    
+  assign-current-sprint-test:
+    if: startsWith(github.event.issue.type.name, 'VetWay')
+    needs: initialize
+    uses: ./.github/workflows/prod-critical-sprint.yml
+    secrets: inherit
+    with:
+      project-owner: Angel-Organization
+      project-number: 1
+      project-id: PVT_kwDOElfYpM4BeD2H
+      sprint-field-id: PVTIF_lADOElfYpM4BeD2HzhYg1m0
+      prod-critical-priority-id: IFSSO_kgDOBKR5-Q
+

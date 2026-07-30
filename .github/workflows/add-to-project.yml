@@ -7,7 +7,6 @@
 #
 # This action is called by:
 #  - new-issue.yml - when an issue is first created
-#
 
 name: Add to Issue to Project
 

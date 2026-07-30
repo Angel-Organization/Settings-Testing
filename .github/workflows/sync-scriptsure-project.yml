@@ -237,8 +237,6 @@ jobs:
                 }
               `;
               
-              core.info(JSON.stringify(currentIteration, null, 2));
-              
               const response = await github.graphql(query, {
                 owner: process.env.PROJECT_OWNER,
                 number: Number(process.env.PROJECT_NUMBER)
@@ -381,6 +379,7 @@ jobs:
               
               // Determine the currently active sprint 
               const currentIteration = await getCurrentIteration();
+              core.info(JSON.stringify(currentIteration, null, 2));
               core.info(`Current iteration: ${currentIteration.title}`);
               core.info(`Project sprint: ${project.Sprint}`);
             

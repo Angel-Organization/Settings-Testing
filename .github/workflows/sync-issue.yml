@@ -7,6 +7,11 @@ on:
       - labeled
       - unlabeled
 
+# Prevent multiple runs for the same issue.
+concurrency:
+  group: sync-scriptsure-project-${{ github.event.issue.id }}
+  cancel-in-progress: true
+  
 jobs:
   initialize:
     runs-on: ubuntu-latest

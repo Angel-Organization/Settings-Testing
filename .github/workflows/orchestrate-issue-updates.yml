@@ -1,3 +1,16 @@
+# Provides downstream workflows the appropriate context for updating projects
+# when an issue changes
+#
+# This workflow:
+# - Determines which Product the issue belongs to
+# - Routes the issue to the correct reusable workflow
+# - Calls sync-project.yml and supplies it with the necessary project context
+#
+# This workflow is automatically triggered when:
+# - Issue body is edited
+# - Labels are added
+# - Labels are removed
+
 name: Orchestrate Issue Updates
 
 on:
@@ -9,7 +22,7 @@ on:
 
 # Prevent multiple runs for the same issue.
 concurrency:
-  group: sync-scriptsure-project-${{ github.event.issue.id }}
+  group: sync-project-${{ github.event.issue.id }}
   cancel-in-progress: true
 
 permissions:
@@ -55,7 +68,7 @@ jobs:
 
             core.setOutput("product", product);
 
-  sync-scriptsure:
+  sync-vetway:
     needs: initialize
     if: needs.initialize.outputs.product == 'VetWay'
     uses: ./.github/workflows/sync-project.yml
@@ -86,7 +99,7 @@ jobs:
           }
         }
 
-  sync-vetway:
+  sync-scriptsure:
     needs: initialize
     if: needs.initialize.outputs.product == 'ScriptSure'
     uses: ./.github/workflows/sync-project.yml

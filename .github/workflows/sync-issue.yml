@@ -11,7 +11,11 @@ on:
 concurrency:
   group: sync-scriptsure-project-${{ github.event.issue.id }}
   cancel-in-progress: true
-  
+
+permissions:
+  contents: read
+  issues: read
+
 jobs:
   initialize:
     runs-on: ubuntu-latest

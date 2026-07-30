@@ -95,6 +95,7 @@ jobs:
       project-owner: daw-systems
       project-owner-type: organization
       project-number: 5
+      project-id: PVT_kwDOD6R9-s4Bbv4y
       config: |
         {
           "fields": {

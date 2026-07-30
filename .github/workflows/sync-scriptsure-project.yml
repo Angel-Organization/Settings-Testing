@@ -87,10 +87,8 @@ jobs:
               issue: {
                 fields: {
                   Priority: {
-                    id: "IFSS_kgDOAqcSiw",
-                    type: "singleSelect",
                     options: {
-                      ProdCritical: "IFSSO_kgDOBKR5-Q"
+                      ProdCritical: 77887993
                     }
                   }
                 }
@@ -317,7 +315,6 @@ jobs:
             }
 
             async function getPriority() {
-              // Get the organization issue field values for this issue
               const response = await github.request(
                 "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
                 {
@@ -330,8 +327,9 @@ jobs:
                 }
               );
             
-              core.info(JSON.stringify(response.data, null, 2));
-              return null;
+              const priority = response.data.find(field => field.issue_field_name === "Priority");
+            
+              return priority?.single_select_option?.id ?? null;
             }
             
             /*

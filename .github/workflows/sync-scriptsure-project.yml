@@ -377,6 +377,9 @@ jobs:
               // Only specific priorities get auto-added to the current sprint
               const priority = await getPriority();
             
+              core.info(`Returned priority: ${priority}`);
+              core.info(`Expected priority: ${Config.issue.fields.Priority.options.ProdCritical}`);
+
               if (!Config.sprintPriorities.has(priority)) {
                 core.info("Skipping sprint assignment: priority not configured.");
                 return;

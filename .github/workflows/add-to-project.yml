@@ -1,4 +1,4 @@
-name: Assign PROD Critical to Current Sprint
+name: Add to Issue to Project
 
 on:
   workflow_call:
@@ -19,19 +19,22 @@ on:
         required: true
         type: number
 
-permissions:
-  contents: read
-  issues: read
-
 jobs:
-  assign-current-sprint:
+  add-to-project:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/github-script@v8
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-          github-token: ${{ github.token }}
+          app-id: ${{ secrets.ACTIONS_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
 
+      - name: Add to project
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const issue = context.payload.issue;
 
@@ -44,32 +47,25 @@ jobs:
               prodCriticalPriorityId: Number("${{ inputs.prod-critical-priority-id }}")
             };
 
-            // Project item
-            async function getProjectItem() {
+            // Add issue to project
+            async function addToProject() {
               const response = await github.graphql(`
-                query($owner:String!, $repo:String!, $number:Int!) {
-                  repository(owner:$owner, name:$repo) {
-                    issue(number:$number) {
-                      projectItems(first:100) {
-                        nodes {
-                          id
-                          project {
-                            number
-                          }
-                        }
-                      }
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {
+                    projectId: $projectId
+                    contentId: $contentId
+                  }) {
+                    item {
+                      id
                     }
                   }
                 }
               `, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                number: issue.number
+                projectId: Config.projectId,
+                contentId: issue.node_id
               });
 
-              return response.repository.issue.projectItems.nodes.find(
-                item => item.project.number === Config.projectNumber
-              )?.id ?? null;
+              return response.addProjectV2ItemById.item.id;
             }
 
             // Priority field
@@ -133,8 +129,8 @@ jobs:
             // Update sprint
             async function setSprint(projectItemId, iterationId) {
               await github.graphql(`
-                mutation($input:UpdateProjectV2ItemFieldValueInput!) {
-                  updateProjectV2ItemFieldValue(input:$input) {
+                mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input: $input) {
                     projectV2Item {
                       id
                     }
@@ -145,23 +141,22 @@ jobs:
                   projectId: Config.projectId,
                   itemId: projectItemId,
                   fieldId: Config.sprintFieldId,
-                  value: { iterationId }
+                  value: {
+                    iterationId
+                  }
                 }
               });
             }
 
             async function run() {
-              core.info(`Checking Issue #${issue.number}`);
+              core.info(`Adding Issue #${issue.number} to project`);
 
-              // Only PROD Critical issues
-              if ((await getPriority()) !== Config.prodCriticalPriorityId) {
-                return;
-              }
+              const projectItemId = await addToProject();
 
-              const projectItemId = await getProjectItem();
+              const priority = await getPriority();
 
-              // Skip issues outside this project
-              if (!projectItemId) {
+              if (priority !== Config.prodCriticalPriorityId) {
+                core.info("Not PROD Critical");
                 return;
               }
 

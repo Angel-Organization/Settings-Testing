@@ -45,7 +45,6 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
 
           script: |
-            const core = require("@actions/core");
             const issue = context.payload.issue;
 
             /*

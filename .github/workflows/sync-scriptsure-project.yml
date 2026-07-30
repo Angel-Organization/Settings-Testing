@@ -395,6 +395,7 @@ jobs:
               } else {
                 core.info("Issue is already in the current sprint.");
               }
+            }
 
             /*
              * ============================================================

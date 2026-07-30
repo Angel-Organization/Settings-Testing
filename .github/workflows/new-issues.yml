@@ -8,7 +8,6 @@
 # This workflow will not automatically set issue fields for issues created from a 
 # blank template. However, if the Product is set, the issue will still be routed to
 # the correct github project
-#
 
 name: Populate Issue Fields
 

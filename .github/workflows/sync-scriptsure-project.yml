@@ -203,6 +203,7 @@ jobs:
             
               // Build a simple object keyed by project field name
               for (const field of response.node.fieldValues.nodes) {
+                if (!field.field)continue;
                 const fieldName = field.field.name;
             
                 project[fieldName] =

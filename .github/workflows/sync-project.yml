@@ -35,7 +35,7 @@ jobs:
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
-          owner: ${{ env.PROJECT_OWNER }}
+          owner: ${{ inputs.project-owner }}
 
       - name: Synchronize Project
         uses: actions/github-script@v8
@@ -45,18 +45,18 @@ jobs:
 
           script: |
             const issue = context.payload.issue;
+            const Config = JSON.parse(String.raw`${{ inputs.config }}`);
 
               // Issue labels & corresponding project statuses,
               // in order of precedence
-              statusRules: [
-                ["deployed: PROD", "Production"],
-                ["deployed: STAGE", "Stage"],
-                ["deployed: TEST", "Test"],
-                ["QA Passed", "QA Passed"],
-                ["On testing", "QA Testing"],
-                ["In development", "In Development"]
-              ],
-            };
+            const statusRules = [
+              ["deployed: PROD", "Production"],
+              ["deployed: STAGE", "Stage"],
+              ["deployed: TEST", "Test"],
+              ["QA Passed", "QA Passed"],
+              ["On testing", "QA Testing"],
+              ["In development", "In Development"]
+            ];
 
             /*
              * ============================================================
@@ -91,7 +91,7 @@ jobs:
 
               // Get the project item associated with the configured project
               const item = response.repository.issue.projectItems.nodes.find(
-                item => item.project.number === Number(process.env.PROJECT_NUMBER)
+                item => item.project.number === Number("${{ inputs.project-number }}")
               );
               
               // Return the Project item ID, or null if the issue is not in the Project.
@@ -169,7 +169,7 @@ jobs:
                 throw new Error(`Unknown field: ${fieldName}`);
             
               const input = {
-                projectId: process.env.PROJECT_ID,
+                projectId: "${{ inputs.project-id }}",
                 itemId: projectItemId,
                 fieldId: field.id
               };
@@ -232,7 +232,7 @@ jobs:
               let status = "Todo";
 
               // Highest precedence label sets the project status
-              for (const [label, value] of Config.statusRules) {
+              for (const [label, value] of statusRules) {
                 if (labels.has(label)) {
                   status = value;
                   break;

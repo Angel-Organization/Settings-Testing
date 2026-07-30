@@ -6,7 +6,7 @@
 # - Syncs project fields based on labels and issue field values applied
 #
 # This action is called by:
-# - orchestrate-issue-updates.yml - when an issue is edited or labels change
+# - orchestrate-issue-updates.yml - when labels change
 
 name: Sync Project Status
 

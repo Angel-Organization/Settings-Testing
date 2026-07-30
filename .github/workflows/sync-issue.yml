@@ -1,0 +1,69 @@
+name: Sync Issue
+
+on:
+  issues:
+    types:
+      - edited
+      - labeled
+      - unlabeled
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+
+    outputs:
+      product: ${{ steps.product.outputs.product }}
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.ACTIONS_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+
+      - name: Read Product
+        id: product
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const response = await github.request(
+              "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                headers: {
+                  "X-GitHub-Api-Version": "2022-11-28"
+                }
+              }
+            );
+
+            const product = response.data.find(
+              field => field.issue_field_name === "Product"
+            )?.single_select_option?.name ?? "";
+
+            core.setOutput("product", product);
+
+  sync-scriptsure:
+    needs: initialize
+    if: needs.initialize.outputs.product == 'VetWay'
+    uses: ./.github/workflows/sync-project.yml
+    secrets: inherit
+    with:
+      project-owner: Angel-Organization
+      project-owner-type: organization
+      project-number: 1
+      project-id: PVT_kwDOElfYpM4BeD2H
+
+  sync-vetway:
+    needs: initialize
+    if: needs.initialize.outputs.product == 'ScriptSure'
+    uses: ./.github/workflows/sync-project.yml
+    secrets: inherit
+    with:
+      project-owner: daw-systems
+      project-owner-type: organization
+      project-number: 5
+      project-id: PVT_kwDOD6R9-s4Bbv4y

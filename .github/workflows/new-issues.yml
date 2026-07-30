@@ -291,30 +291,19 @@ jobs:
 
             async function main() {
 
-              core.info(
-                `Initializing Issue #${issueNumber}`
-              );
+              core.info(`Initializing Issue #${issueNumber}`);
 
               const values = parseIssueForm();
+              core.setOutput("product", values["Product"] ?? "");
+              logIssueFormValues(values);
 
-              logIssueFormValues(
-                values
-              );
+              const issueFields = buildIssueFields(values);
 
-              const issueFields =
-                buildIssueFields(values);
-
-              await updateIssueFields(
-                issueFields
-              );
+              await updateIssueFields(issueFields);
              
-              await updateIssueType(
-                values
-              );
+              await updateIssueType(values);
               
-              core.notice(
-                `Successfully initialized Issue #${issueNumber}.`
-              );
+              core.notice(`Successfully initialized Issue #${issueNumber}.`);
             }
 
             /*

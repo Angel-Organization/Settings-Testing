@@ -163,7 +163,7 @@ jobs:
             
             async function setProjectField(projectItemId, fieldName, value) {
               // Look up the project fields configured in this action
-              const field = Config.project.fields[fieldName];
+              const field = Config.fields[fieldName];
             
               if (!field)
                 throw new Error(`Unknown field: ${fieldName}`);

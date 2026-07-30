@@ -330,14 +330,8 @@ jobs:
                 }
               );
             
-              // Find the configured Priority field
-              const priority = response.data.find(
-                field => field.node_id === Config.issue.fields.Priority.id
-              );
-            
-              // Return the priority, if it's supposed to auto-add the issue
-              // to the sprint
-              return priority?.single_select_option?.node_id ?? null;
+              core.info(JSON.stringify(response.data, null, 2));
+              return null;
             }
             
             /*

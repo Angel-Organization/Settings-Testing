@@ -185,9 +185,7 @@ jobs:
               core.startGroup("Issue Form Values");
               
               for (const field of ISSUE_FIELDS) {
-                core.info(
-                  `${field.label}: ${values[field.label] ?? "(none)"}`
-                );
+                core.info(`${field.label}: ${values[field.label] ?? "(none)"}`);
               }
 
               core.endGroup();
@@ -252,8 +250,7 @@ jobs:
                 return;
               }
 
-              core.info(
-                `Updating ${issueFields.length} Issue Field(s)...`);
+              core.info(`Updating ${issueFields.length} Issue Field(s)...`);
 
               await github.graphql(
                 `

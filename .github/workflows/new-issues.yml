@@ -23,6 +23,7 @@ jobs:
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
           
       - name: Populate Issue Fields
+        id: populate
         uses: actions/github-script@v8
 
         with:
@@ -332,9 +333,11 @@ jobs:
                 error.message ?? String(error)
                               );
              }
+    outputs:
+      product: ${{ steps.populate.outputs.product }}
                 
   assign-current-sprint-scriptsure:
-    if: github.event.issue.type.name == 'ScriptSure'
+    if: needs.initialize.outputs.product == 'ScriptSure'
     needs: initialize
     uses: ./.github/workflows/prod-critical-sprint.yml
     secrets: inherit
@@ -346,7 +349,7 @@ jobs:
       prod-critical-priority-id: 69166233
     
   assign-current-sprint-test:
-    if: startsWith(github.event.issue.type.name, 'VetWay')
+    if: needs.initialize.outputs.product == 'VetWay'
     needs: initialize
     uses: ./.github/workflows/prod-critical-sprint.yml
     secrets: inherit

@@ -343,7 +343,7 @@ jobs:
       project-number: 5
       project-id: PVT_kwDOD6R9-s4Bbv4y
       sprint-field-id: PVTIF_lADOD6R9-s4Bbv4yzhXaxnQ
-      prod-critical-priority-id: IFSSO_kgDOBB9kmQ
+      prod-critical-priority-id: 69166233
     
   assign-current-sprint-test:
     if: startsWith(github.event.issue.type.name, 'VetWay')
@@ -355,5 +355,5 @@ jobs:
       project-number: 1
       project-id: PVT_kwDOElfYpM4BeD2H
       sprint-field-id: PVTIF_lADOElfYpM4BeD2HzhYg1m0
-      prod-critical-priority-id: IFSSO_kgDOBKR5-Q
+      prod-critical-priority-id: 77887993
 

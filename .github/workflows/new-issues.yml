@@ -1,3 +1,15 @@
+# Populates github issue fields when an issue is created or reopened
+# 
+# This workflow:
+# - Parses values from the issue body when an issue is created
+# - Populates Type, Source, Product, and Priority
+# - Calls add-to-project.yml to add new issues to the right project automatically
+#
+# This workflow will not automatically set issue fields for issues created from a 
+# blank template. However, if the Product is set, the issue will still be routed to
+# the correct github project
+#
+
 name: Populate Issue Fields
 
 on:
@@ -13,6 +25,9 @@ permissions:
 jobs:
   initialize:
     runs-on: ubuntu-latest
+
+    outputs:
+      product: ${{ steps.populate.outputs.product }}
 
     steps:
       - name: Generate GitHub App token
@@ -120,8 +135,7 @@ jobs:
              */
             function parseIssueForm() {
               const values = {};
-              const sections = issueBody
-                .split(/\n(?=### )/);
+              const sections = issueBody.split(/\n(?=### )/);
 
               for (const section of sections) {
                 const lines = section.trim().split("\n");
@@ -130,9 +144,7 @@ jobs:
                   continue;
                 }
 
-                const label = lines[0]
-                  .replace(/^### /, "")
-                  .trim();
+                const label = lines[0].replace(/^### /, "").trim();
 
                 const value = lines
                   .slice(1)
@@ -181,6 +193,26 @@ jobs:
 
               core.endGroup();
             }
+
+            // This makes sure that issues created from a blank template still get
+            // added to the right github project, as long as the Product is set
+            async function getProductField() {
+              const response = await github.request(
+                "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  headers: {
+                    "X-GitHub-Api-Version": "2022-11-28"
+                  }
+                }
+              );
+            
+              return response.data.find(
+                field => field.issue_field_name === "Product"
+              )?.single_select_option?.name ?? null;
+            }
             
             /*
              * ============================================================
@@ -198,16 +230,13 @@ jobs:
                 const value = values[field.label];
 
                 if (!value) {
-                  core.info(
-                    `Skipping ${field.label} (no value)`
-                  );
+                  core.info(`Skipping ${field.label} (no value)`);
                   continue;
                 }
 
                 issueFields.push({
                   fieldId: field.fieldId,
-                  singleSelectOptionId:
-                    getOptionId(field, value)
+                  singleSelectOptionId: getOptionId(field, value)
                 });
               }
 
@@ -220,15 +249,12 @@ jobs:
             async function updateIssueFields(issueFields) {
 
               if (issueFields.length === 0) {
-                core.info(
-                  "No Issue Fields to update."
-                );
+                core.info("No Issue Fields to update.");
                 return;
               }
 
               core.info(
-                `Updating ${issueFields.length} Issue Field(s)...`
-              );
+                `Updating ${issueFields.length} Issue Field(s)...`);
 
               await github.graphql(
                 `
@@ -265,15 +291,11 @@ jobs:
                 const featureType = values["Feature Type"];
               
                 if (!featureType) {
-                  core.info(
-                    "Skipping Issue Type (no Feature Type selected)"
-                  );
+                  core.info("Skipping Issue Type (no Feature Type selected)");
                   return;
                 }
               
-                core.info(
-                  `Setting Issue Type to "${featureType}"...`
-                );
+                core.info(`Setting Issue Type to "${featureType}"...`);
               
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -294,6 +316,10 @@ jobs:
               core.info(`Initializing Issue #${issueNumber}`);
 
               const values = parseIssueForm();
+              if (!values["Product"]) {
+                values["Product"] = await getProductField();
+              }
+              
               core.setOutput("product", values["Product"] ?? "");
               logIssueFormValues(values);
 
@@ -318,12 +344,8 @@ jobs:
             } catch (error) {
               core.error(error);
 
-              core.setFailed(
-                error.message ?? String(error)
-                              );
+              core.setFailed(error.message ?? String(error));
              }
-    outputs:
-      product: ${{ steps.populate.outputs.product }}
                 
   assign-current-sprint-scriptsure:
     if: needs.initialize.outputs.product == 'ScriptSure'

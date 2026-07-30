@@ -4,7 +4,6 @@ on:
   issues:
     types:
       - opened
-      - edited
 
 permissions:
   contents: read
@@ -328,7 +327,7 @@ jobs:
   assign-current-sprint-scriptsure:
     if: needs.initialize.outputs.product == 'ScriptSure'
     needs: initialize
-    uses: ./.github/workflows/prod-critical-sprint.yml
+    uses: ./.github/workflows/add-to-project.yml
     secrets: inherit
     with:
       project-owner: daw-systems
@@ -340,7 +339,7 @@ jobs:
   assign-current-sprint-test:
     if: needs.initialize.outputs.product == 'VetWay'
     needs: initialize
-    uses: ./.github/workflows/prod-critical-sprint.yml
+    uses: ./.github/workflows/add-to-project.yml
     secrets: inherit
     with:
       project-owner: Angel-Organization

@@ -377,10 +377,11 @@ jobs:
               // Only specific priorities get auto-added to the current sprint
               const priority = await getPriority();
             
-              if (!Config.sprintPriorities.has(priority))
+              if (!Config.sprintPriorities.has(priority)) {
                 core.info("Skipping sprint assignment: priority not configured.");
                 return;
-            
+              }
+              
               // Determine the currently active sprint 
               const currentIteration = await getCurrentIteration();
               core.info(`Current iteration: ${currentIteration.title}`);
@@ -393,7 +394,7 @@ jobs:
                 await setProjectField(projectItemId,"Sprint",currentIteration.id);
               } else {
                 core.info("Issue is already in the current sprint.");
-            }
+              }
 
             /*
              * ============================================================

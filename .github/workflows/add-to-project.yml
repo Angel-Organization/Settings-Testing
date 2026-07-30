@@ -1,3 +1,14 @@
+# Adds newly created issues to github projects, based on the "Product"
+# the issue is for
+#
+# If the issue's "Priority" is set to "PROD Critical," this workflow 
+# also automatically assigns the issue to the current Sprint for that
+# github project
+#
+# This action is called by:
+#  - new-issue.yml - when an issue is first created
+#
+
 name: Add to Issue to Project
 
 on:
@@ -38,7 +49,7 @@ jobs:
           script: |
             const issue = context.payload.issue;
 
-            // Configuration
+            // Configuration, these are passed in as inputs when the action is called
             const Config = {
               projectOwner: "${{ inputs.project-owner }}",
               projectNumber: Number("${{ inputs.project-number }}"),
@@ -47,17 +58,17 @@ jobs:
               prodCriticalPriorityId: Number("${{ inputs.prod-critical-priority-id }}")
             };
 
-            // Add issue to project
+            // Add issue to project & return the project item id
             async function addToProject() {
               const response = await github.graphql(`
                 mutation($projectId: ID!, $contentId: ID!) {
                   addProjectV2ItemById(input: {
                     projectId: $projectId
                     contentId: $contentId
-                  }) {
-                    item {
-                      id
-                    }
+                    }) { 
+                    item { 
+                      id 
+                    } 
                   }
                 }
               `, {
@@ -68,7 +79,7 @@ jobs:
               return response.addProjectV2ItemById.item.id;
             }
 
-            // Priority field
+            // Get the issue's priority
             async function getPriority() {
               const response = await github.request(
                 "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
@@ -82,12 +93,11 @@ jobs:
                 }
               );
 
-              return response.data.find(
-                field => field.issue_field_name === "Priority"
-              )?.single_select_option?.id ?? null;
+              return response.data.find(field => field.issue_field_name === "Priority")
+              ?.single_select_option?.id ?? null;
             }
 
-            // Active sprint
+            // Find the Sprint that is currently active
             async function getCurrentIteration() {
               const response = await github.graphql(`
                 query($owner:String!, $number:Int!) {
@@ -141,9 +151,7 @@ jobs:
                   projectId: Config.projectId,
                   itemId: projectItemId,
                   fieldId: Config.sprintFieldId,
-                  value: {
-                    iterationId
-                  }
+                  value: { iterationId }
                 }
               });
             }
@@ -151,9 +159,10 @@ jobs:
             async function run() {
               core.info(`Adding Issue #${issue.number} to project`);
 
-              const projectItemId = await addToProject();
-
-              const priority = await getPriority();
+              const [projectItemId, priority] = await Promise.all([
+                addToProject(),
+                getPriority()
+              ]);
 
               if (priority !== Config.prodCriticalPriorityId) {
                 core.info("Not PROD Critical");

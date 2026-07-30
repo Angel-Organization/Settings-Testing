@@ -56,6 +56,26 @@ jobs:
       project-owner-type: organization
       project-number: 1
       project-id: PVT_kwDOElfYpM4BeD2H
+      config: |
+        {
+          "fields": {
+            "Status": {
+              "id": "PVTSSF_lADOElfYpM4BeD2HzhYg1gE",
+              "type": "singleSelect",
+              "options": {
+                "Blocked": "11a9b027",
+                "Scoping": "6695b6f2",
+                "Todo": "f75ad846",
+                "In Development": "47fc9ee4",
+                "QA Testing": "4b2dec1a",
+                "QA Passed": "9679dba4",
+                "Test": "9c54861d",
+                "Stage": "7e9333bf",
+                "Production": "c93ec73b"
+              }
+            }
+          }
+        }
 
   sync-vetway:
     needs: initialize

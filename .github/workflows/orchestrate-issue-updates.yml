@@ -1,4 +1,4 @@
-name: Sync Issue
+name: Orchestrate Issue Updates
 
 on:
   issues:
@@ -95,4 +95,23 @@ jobs:
       project-owner: daw-systems
       project-owner-type: organization
       project-number: 5
-      project-id: PVT_kwDOD6R9-s4Bbv4y
+      config: |
+        {
+          "fields": {
+            "Status": {
+              "id": "PVTSSF_lADOD6R9-s4Bbv4yzhWeLVI",
+              "type": "singleSelect",
+              "options": {
+                "Blocked": "c4c3f725",
+                "Scoping": "37e901aa",
+                "Todo": "f75ad846",
+                "In Development": "47fc9ee4",
+                "QA Testing": "8a2eac8e",
+                "QA Passed": "e57d462f",
+                "Test": "98236657",
+                "Stage": "5f56e192",
+                "Production": "98b2dac2",
+              }
+            }
+          }
+        }

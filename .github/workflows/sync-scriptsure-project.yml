@@ -3,7 +3,6 @@ name: Sync ScriptSure Project
 on:
   issues:
     types:
-      - opened
       - edited
       - labeled
       - unlabeled
@@ -72,26 +71,6 @@ jobs:
                       "Stage": "7e9333bf",
                       "Production": "c93ec73b",
                     }
-                  },
-                  Sprint: {
-                    id: "PVTIF_lADOElfYpM4BeD2HzhYg1m0",
-                    type: "iteration"
-                  },
-                  "Blocked Reason": {
-                    type: "singleSelect",
-                    id: "PVTSSF_lADOElfYpM4BeD2HzhZGxLM"
-                  }
-                }
-              },
-
-              // Organization-level issue fields and options
-              issue: {
-                fields: {
-                  Priority: {
-                    options: {
-                      ProdCritical: 77887993
-                    }
-                  }
                 }
               },
               
@@ -106,12 +85,6 @@ jobs:
                 ["In development", "In Development"]
               ],
             };
-
-            // Issue priorities that will be automatically assigned to
-            // the current sprint
-            Config.sprintPriorities = new Set([
-              Config.issue.fields.Priority.options.ProdCritical
-            ])
 
             /*
              * ============================================================
@@ -216,48 +189,6 @@ jobs:
               return project;
             }
             
-            async function getCurrentIteration() {
-              // Get configured iterations, called "Sprint" in the project
-              const query = `
-                query($owner:String!, $number:Int!) {
-                  organization(login:$owner) {
-                    projectV2(number:$number) {
-                      field(name:"Sprint") {
-                        ... on ProjectV2IterationField {
-                          configuration {
-                            iterations {
-                              id
-                              title
-                              startDate
-                              duration
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              `;
-              
-              const response = await github.graphql(query, {
-                owner: process.env.PROJECT_OWNER,
-                number: Number(process.env.PROJECT_NUMBER)
-              });
-            
-              // Determine which iteration is currently active
-              const today = new Date();
-            
-              return response.organization.projectV2.field.configuration.iterations.find(
-                iteration => {
-                  const start = new Date(iteration.startDate);
-                  const end = new Date(start);
-                  end.setDate(end.getDate() + iteration.duration);
-            
-                  return today >= start && today < end;
-                }
-              );
-            }
-            
             async function setProjectField(projectItemId, fieldName, value) {
               // Look up the project fields configured in this action
               const field = Config.project.fields[fieldName];
@@ -315,24 +246,6 @@ jobs:
                 input
               });
             }
-
-            async function getPriority() {
-              const response = await github.request(
-                "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
-                {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issue.number,
-                  headers: {
-                    "X-GitHub-Api-Version": "2022-11-28"
-                  }
-                }
-              );
-            
-              const priority = response.data.find(field => field.issue_field_name === "Priority");
-            
-              return priority?.single_select_option?.id ?? null;
-            }
             
             /*
              * ============================================================
@@ -346,55 +259,21 @@ jobs:
             async function syncStatus(projectItemId, project) {
               let status = "Todo";
 
-              // If the issue is blocked, it's status is set to "Blocked"
-              // regardless of any labels
-              if (project["Blocked Reason"]) {
-                status = "Blocked";
-              } else {
-                // Highest precedence label sets the project status
-                for (const [label, value] of Config.statusRules) {
-                  if (labels.has(label)) {
-                    status = value;
-                    break;
-                  }
-                }
+              // Highest precedence label sets the project status
+              for (const [label, value] of Config.statusRules) {
+                if (labels.has(label)) {
+                  status = value;
+                  break;
+                }  
               }
             
               // Only update the project if it's current status is different than
-              // status identified according to labels/blocked
+              // status identified according to labels
               if (project.Status !== status) {
                 await setProjectField(projectItemId,"Status",status);
               }
             }
             
-            async function syncSprint(projectItemId, project) {
-              // Only specific priorities get auto-added to the current sprint
-              const priority = await getPriority();
-            
-              core.info(`Returned priority: ${priority}`);
-              core.info(`Expected priority: ${Config.issue.fields.Priority.options.ProdCritical}`);
-
-              if (!Config.sprintPriorities.has(priority)) {
-                core.info("Skipping sprint assignment: priority not configured.");
-                return;
-              }
-              
-              // Determine the currently active sprint 
-              const currentIteration = await getCurrentIteration();
-              core.info(JSON.stringify(currentIteration, null, 2));
-              core.info(`Current iteration: ${currentIteration.title}`);
-              core.info(`Project sprint: ${project.Sprint}`);
-            
-              // Only assign the issue to the current sprint if it isn't in the sprint
-              // already
-              if (project.Sprint !== currentIteration.title) {
-                core.info("Assigning issue to current sprint.");
-                await setProjectField(projectItemId,"Sprint",currentIteration.id);
-              } else {
-                core.info("Issue is already in the current sprint.");
-              }
-            }
-
             /*
              * ============================================================
              * Main
@@ -417,9 +296,6 @@ jobs:
             
               // Sync project status
               await syncStatus(projectItemId,project);
-            
-              // See if it needs to get added to the current sprint
-              await syncSprint(projectItemId, project);
             
               core.info(`Sync complete.`);
             }

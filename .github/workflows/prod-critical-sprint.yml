@@ -1,0 +1,179 @@
+name: Assign PROD Critical to Current Sprint
+
+on:
+  workflow_call:
+    inputs:
+      project-owner:
+        required: true
+        type: string
+      project-number:
+        required: true
+        type: number
+      project-id:
+        required: true
+        type: string
+      sprint-field-id:
+        required: true
+        type: string
+      prod-critical-priority-id:
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  assign-current-sprint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+
+          script: |
+            const issue = context.payload.issue;
+
+            // Configuration
+            const Config = {
+              projectOwner: "${{ inputs.project-owner }}",
+              projectNumber: Number("${{ inputs.project-number }}"),
+              projectId: "${{ inputs.project-id }}",
+              sprintFieldId: "${{ inputs.sprint-field-id }}",
+              prodCriticalPriorityId: Number("${{ inputs.prod-critical-priority-id }}")
+            };
+
+            // Project item
+            async function getProjectItem() {
+              const response = await github.graphql(`
+                query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    issue(number:$number) {
+                      projectItems(first:100) {
+                        nodes {
+                          id
+                          project {
+                            number
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: issue.number
+              });
+
+              return response.repository.issue.projectItems.nodes.find(
+                item => item.project.number === Config.projectNumber
+              )?.id ?? null;
+            }
+
+            // Priority field
+            async function getPriority() {
+              const response = await github.request(
+                "GET /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values",
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  headers: {
+                    "X-GitHub-Api-Version": "2022-11-28"
+                  }
+                }
+              );
+
+              return response.data.find(
+                field => field.issue_field_name === "Priority"
+              )?.single_select_option?.id ?? null;
+            }
+
+            // Active sprint
+            async function getCurrentIteration() {
+              const response = await github.graphql(`
+                query($owner:String!, $number:Int!) {
+                  organization(login:$owner) {
+                    projectV2(number:$number) {
+                      field(name:"Sprint") {
+                        ... on ProjectV2IterationField {
+                          configuration {
+                            iterations {
+                              id
+                              title
+                              startDate
+                              duration
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `, {
+                owner: Config.projectOwner,
+                number: Config.projectNumber
+              });
+
+              const today = new Date();
+
+              return response.organization.projectV2.field.configuration.iterations.find(
+                iteration => {
+                  const start = new Date(iteration.startDate);
+                  const end = new Date(start);
+                  end.setDate(end.getDate() + iteration.duration);
+
+                  return today >= start && today < end;
+                }
+              );
+            }
+
+            // Update sprint
+            async function setSprint(projectItemId, iterationId) {
+              await github.graphql(`
+                mutation($input:UpdateProjectV2ItemFieldValueInput!) {
+                  updateProjectV2ItemFieldValue(input:$input) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                input: {
+                  projectId: Config.projectId,
+                  itemId: projectItemId,
+                  fieldId: Config.sprintFieldId,
+                  value: { iterationId }
+                }
+              });
+            }
+
+            async function run() {
+              core.info(`Checking Issue #${issue.number}`);
+
+              // Only PROD Critical issues
+              if ((await getPriority()) !== Config.prodCriticalPriorityId) {
+                return;
+              }
+
+              const projectItemId = await getProjectItem();
+
+              // Skip issues outside this project
+              if (!projectItemId) {
+                return;
+              }
+
+              const currentIteration = await getCurrentIteration();
+
+              if (!currentIteration) {
+                throw new Error("No active sprint found");
+              }
+
+              await setSprint(projectItemId, currentIteration.id);
+
+              core.info(`Assigned to ${currentIteration.title}`);
+            }
+
+            run().catch(core.setFailed);

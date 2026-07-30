@@ -18,9 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PROJECT_OWNER: daw-systems
+  PROJECT_OWNER: Angel-Organization
   PROJECT_OWNER_TYPE: organization
-  PROJECT_NUMBER: 5
+  PROJECT_NUMBER: 1
+  PROJECT_ID: PVT_kwDOElfYpM4BeD2H
 
 jobs:
 
@@ -54,45 +55,51 @@ jobs:
              */
             
             const Config = {
-              
+              // Project level fields and options
               project:{
                 fields: {
                   Status: {
-                    id: "PVTSSF_xxxxxxxxx",
+                    id: "PVTSSF_lADOElfYpM4BeD2HzhYg1gE",
+                    type: "singleSelect",
                     options: {
-                      "To Do": "xxxxxxxx",
-                      "In Development": "xxxxxxxx",
-                      "QA Testing": "xxxxxxxx",
-                      "QA Passed": "xxxxxxxx",
-                      Test: "xxxxxxxx",
-                      Stage: "xxxxxxxx",
-                      Production: "xxxxxxxx",
-                      Blocked: "xxxxxxxx",
-                      Done: "xxxxxxxx"
+                      "Blocked": "11a9b027",
+                      "Scoping": "6695b6f2",
+                      "Todo": "f75ad846",
+                      "In Development": "47fc9ee4",
+                      "QA Testing": "4b2dec1a",
+                      "QA Passed": "9679dba4",
+                      "Test": "9c54861d",
+                      "Stage": "7e9333bf",
+                      "Production": "c93ec73b",
                     }
                   },
                   Sprint: {
-                    id: "PVTIF_xxxxxxxxx",
+                    id: "PVTIF_lADOElfYpM4BeD2HzhYg1m0",
                     type: "iteration"
                   },
                   "Blocked Reason": {
-                    id: "PVTTF_xxxxxxxxx"
+                    type: "singleSelect",
+                    id: "PVTSSF_lADOElfYpM4BeD2HzhZGxLM"
                   }
                 }
               },
 
+              // Organization-level issue fields and options
               issue: {
                 fields: {
                   Priority: {
-                    id: "xxxxxxxx",
+                    id: "IFSS_kgDOAqcSiw",
+                    type: "singleSelect",
                     options: {
-                      ProdCritical: "xxxxxxxx"
+                      ProdCritical: "IFSSO_kgDOBKR5-Q"
                     }
                   }
                 }
               },
               
-              statusRules = [
+              // Issue labels & correspoding project statuses,
+              // in order of precedence
+              statusRules: [
                 ["deployed: PROD", "Production"],
                 ["deployed: STAGE", "Stage"],
                 ["deployed: TEST", "Test"],
@@ -100,11 +107,13 @@ jobs:
                 ["On testing", "QA Testing"],
                 ["In development", "In Development"]
               ],
-                
-              sprintPriorities = new Set([
-                Config.issue.fields.Priority.options.ProdCritical
-              ])
             };
+
+            // Issue priorities that will be automatically assigned to
+            // the current sprint
+            Config.sprintPriorities = new Set([
+              Config.issue.fields.Priority.options.ProdCritical
+            ])
 
             /*
              * ============================================================
@@ -113,7 +122,7 @@ jobs:
              */
             
             async function getProjectItem() {
-            
+              // Find the project items associated with this Github issue
               const query = `
                 query($owner:String!, $repo:String!, $number:Int!) {
                   repository(owner:$owner, name:$repo) {
@@ -136,20 +145,19 @@ jobs:
                 repo: context.repo.repo,
                 number: issue.number
               });
-            
+
+              // Get the project item associated with the configured project
               const item = response.repository.issue.projectItems.nodes.find(
                 item => item.project.number === Number(process.env.PROJECT_NUMBER)
               );
-            
-              if (!item)
-                throw new Error("Issue is not in the configured project.");
-            
-              return item.id;
+              
+              // Return the Project item ID, or null if the issue is not in the Project.
+              return item?.id ?? null;
             
             }
             
             async function getProjectFields(projectItemId) {
-            
+              // Get the current values for project fields associated with the issue
               const query = `
                 query($id:ID!) {
                   node(id:$id) {
@@ -194,8 +202,8 @@ jobs:
             
               const project = {};
             
+              // Build a simple object keyed by project field name
               for (const field of response.node.fieldValues.nodes) {
-            
                 const fieldName = field.field.name;
             
                 project[fieldName] =
@@ -210,6 +218,7 @@ jobs:
             
             async function getCurrentIteration() {
             
+              // Get configured iterations, called "Sprint" in the project
               const query = `
                 query($owner:String!, $number:Int!) {
                   organization(login:$owner) {
@@ -236,6 +245,7 @@ jobs:
                 number: Number(process.env.PROJECT_NUMBER)
               });
             
+              // Determine which iteration is currently active
               const today = new Date();
             
               return response.organization.projectV2.field.configuration.iterations.find(
@@ -250,6 +260,7 @@ jobs:
             }
             
             async function setProjectField(projectItemId, fieldName, value) {
+              // Look up the project fields configured in this action
               const field = Config.project.fields[fieldName];
             
               if (!field)
@@ -261,17 +272,38 @@ jobs:
                 fieldId: field.id
               };
             
-              if (field.type === "iteration") {
-                input.value = {
-                  iterationId: iteration.id
-                };
-            
-              } else {
-                input.value = {
-                  singleSelectOptionId: field.options[value]
-                };
+              // Format the value based on the Project field type
+              switch (field.type) {
+              
+                case "singleSelect":
+                  input.value = {singleSelectOptionId: field.options[value]};
+                  break;
+
+                  case "multiSelect":
+                    input.value = { multiSelectOptionIds: value.map(option => field.options[option])};
+                    break;
+              
+                case "iteration":
+                  input.value = {iterationId: value};
+                  break;
+              
+                case "text":
+                  input.value = {text: value};
+                  break;
+
+                case "date":
+                  input.value = {date: value};
+                  break;
+              
+                case "number":
+                  input.value = {number: value};
+                  break;
+              
+                default: 
+                  throw new Error(`Unsupported field type: ${field.type}`);
               }
             
+              // Update the Project field
               await github.graphql(`
                 mutation($input:UpdateProjectV2ItemFieldValueInput!) {
                   updateProjectV2ItemFieldValue(input:$input) {
@@ -286,7 +318,7 @@ jobs:
             }
 
             async function getPriority() {
-            
+              // Get the priority of the issue
               const query = `
                 query($owner:String!, $repo:String!, $number:Int!) {
                   repository(owner:$owner, name:$repo) {
@@ -312,6 +344,8 @@ jobs:
                 number: issue.number
               });
             
+              // Return the priority id, if it's a priority that is configured to auto-add
+              // the issue to the current sprint
               return response.repository.issue.fieldValues.nodes.find(
                 field => field.field.id === Config.issue.fields.Priority.id
               )?.optionId;
@@ -324,16 +358,18 @@ jobs:
              * ============================================================
              */
             
-            const issue = context.payload.issue;
+            // Cache issue labels for quick lookup
             const labels = new Set(issue.labels.map(label => label.name));
             
             async function syncStatus(projectItemId, project) {
-              
-              let status = "To Do";
+              let status = "Todo";
 
+              // If the issue is blocked, it's status is set to "Blocked"
+              // regardless of any labels
               if (project["Blocked Reason"]) {
                 status = "Blocked";
               } else {
+                // Highest precedence label sets the project status
                 for (const [label, value] of Config.statusRules) {
                   if (labels.has(label)) {
                     status = value;
@@ -342,30 +378,28 @@ jobs:
                 }
               }
             
+              // Only update the project if it's current status is different than
+              // status identified according to labels/blocked
               if (project.Status !== status) {
-                await setProjectField(
-                  projectItemId,
-                  "Status",
-                  status
-                );
+                await setProjectField(projectItemId,"Status",status);
               }
-            
             }
             
-            async function syncSprint(projectItemId) {
+            async function syncSprint(projectItemId, project) {
+              // Only specific priorities get auto-added to the current sprint
               const priority = await getPriority();
             
               if (!Config.sprintPriorities.has(priority))
                 return;
             
+              // Determine the currently active sprint 
               const currentIteration = await getCurrentIteration();
             
-              await setProjectField(
-                projectItemId,
-                "Sprint",
-                currentIteration.id
-              );
-            
+              // Only assign the issue to the current sprint if it isn't in the sprint
+              // already
+              if (project.Sprint !== currentIteration.title) {
+                await setProjectField(projectItemId,"Sprint",currentIteration.id);
+              }
             }
 
             /*
@@ -375,31 +409,26 @@ jobs:
              */
             
             async function runProjectSync() {
+              core.info(`Synchronizing Issue #${issue.number}`);
+              // Find the issue's corresponding project item
+              const projectItemId = await getProjectItem();  
+
+              // Skip if the issue isn't in the configured project
+              if (!projectItemId) {
+                core.info("Issue is not in the configured Project. Skipping synchronization.");
+                return;
+              }
+              
+              // Retrieve the current project field values
+              const project = await getProjectFields(projectItemId);
             
-              core.info(
-                `Synchronizing Issue #${issue.number}`
-              );
+              // Sync project status
+              await syncStatus(projectItemId,project);
             
-              const projectItemId =
-                await getProjectItem();
+              // See if it needs to get added to the current sprint
+              await syncSprint(projectItemId, project);
             
-              const project =
-                await getProjectFields(projectItemId);
-            
-              await syncStatus(
-                projectItemId,
-                project
-              );
-            
-              await syncSprint(
-                projectItemId
-              );
-            
-              core.info(
-                `Synchronization complete.`
-              );
-            
+              core.info(`Sync complete.`);
             }
             
-            runProjectSync()
-              .catch(core.setFailed);
+            runProjectSync().catch(core.setFailed);

@@ -1,27 +1,27 @@
-name: Sync ScriptSure Project
+name: Sync Project Status
 
 on:
-  issues:
-    types:
-      - edited
-      - labeled
-      - unlabeled
-      - reopened
+  workflow_call:
+    inputs:
+      project-owner:
+        type: string
+        required: true
+      project-owner-type:
+        type: string
+        required: true
+      project-number:
+        type: number
+        required: true
+      project-id:
+        type: string
+        required: true
+      config:
+        type: string
+        required: true
 
 permissions:
   contents: read
   issues: read
-
-# Prevent multiple runs for the same issue.
-concurrency:
-  group: sync-scriptsure-project-${{ github.event.issue.id }}
-  cancel-in-progress: true
-
-env:
-  PROJECT_OWNER: Angel-Organization
-  PROJECT_OWNER_TYPE: organization
-  PROJECT_NUMBER: 1
-  PROJECT_ID: PVT_kwDOElfYpM4BeD2H
 
 jobs:
 
@@ -29,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    
       - name: Generate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v2
@@ -47,34 +46,7 @@ jobs:
           script: |
             const issue = context.payload.issue;
 
-            /*
-             * ============================================================
-             * Configuration
-             * ============================================================
-             */
-            
-            const Config = {
-              // Project level fields and options
-              project:{
-                fields: {
-                  Status: {
-                    id: "PVTSSF_lADOElfYpM4BeD2HzhYg1gE",
-                    type: "singleSelect",
-                    options: {
-                      "Blocked": "11a9b027",
-                      "Scoping": "6695b6f2",
-                      "Todo": "f75ad846",
-                      "In Development": "47fc9ee4",
-                      "QA Testing": "4b2dec1a",
-                      "QA Passed": "9679dba4",
-                      "Test": "9c54861d",
-                      "Stage": "7e9333bf",
-                      "Production": "c93ec73b",
-                    }
-                }
-              },
-              
-              // Issue labels & correspoding project statuses,
+              // Issue labels & corresponding project statuses,
               // in order of precedence
               statusRules: [
                 ["deployed: PROD", "Production"],

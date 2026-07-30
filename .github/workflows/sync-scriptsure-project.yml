@@ -196,7 +196,8 @@ jobs:
               const response = await github.graphql(query, {
                 id: projectItemId
               });
-            
+
+              core.info(JSON.stringify(response.node.fieldValues.nodes, null, 2));
               const project = {};
             
               // Build a simple object keyed by project field name

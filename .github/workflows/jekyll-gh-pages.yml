@@ -58,9 +58,13 @@ jobs:
           ]
 
           TRACKED_STATUSES = {
+              "Scoping",
               "In Development",
               "QA Testing",
               "QA Passed",
+              "Test",
+              "Stage",
+              "Production",
           }
 
           def graphql(query, variables=None):
@@ -92,6 +96,10 @@ jobs:
 
               return json.loads(result.stdout)
 
+          # ==================================================
+          # Discover all open projects
+          # ==================================================
+
           PROJECTS_QUERY = """
           query($org: String!) {
             organization(login: $org) {
@@ -114,17 +122,21 @@ jobs:
           )
 
           projects = [
-              p
-              for p in (
+              project
+              for project in (
                   result["data"]
                   ["organization"]
                   ["projectsV2"]
                   ["nodes"]
               )
-              if not p["closed"]
+              if not project["closed"]
           ]
 
           print(f"Found {len(projects)} open projects")
+
+          # ==================================================
+          # Project items / issue metadata
+          # ==================================================
 
           PROJECT_QUERY = """
           query(
@@ -236,6 +248,10 @@ jobs:
           }
           """
 
+          # ==================================================
+          # Issue project-status history
+          # ==================================================
+
           TIMELINE_QUERY = """
           query(
             $owner: String!,
@@ -267,6 +283,7 @@ jobs:
           """
 
           def issue_priority(issue, item):
+              # Prefer issue-level custom Priority
               for value in (
                   issue
                   .get("issueFieldValues", {})
@@ -280,6 +297,7 @@ jobs:
                           or "Unspecified"
                       )
 
+              # Fall back to project-level Priority
               for value in (
                   item
                   .get("fieldValues", {})
@@ -328,6 +346,7 @@ jobs:
                           "url": pv2["url"],
                       }
 
+                      # Find iteration fields dynamically.
                       for field in pv2["fields"]["nodes"]:
                           if not field.get("configuration"):
                               continue
@@ -412,6 +431,10 @@ jobs:
 
                   cursor = connection["pageInfo"]["endCursor"]
 
+              # ==============================================
+              # Load all tracked status transitions
+              # ==============================================
+
               for index, issue in enumerate(issues, 1):
                   print(
                       f'Project {project["number"]}: '
@@ -444,14 +467,13 @@ jobs:
                       )
 
                       for event in nodes:
-                          if (
-                              event.get("status")
-                              not in TRACKED_STATUSES
-                          ):
+                          status = event.get("status")
+
+                          if status not in TRACKED_STATUSES:
                               continue
 
                           issue["events"].append({
-                              "status": event["status"],
+                              "status": status,
                               "date": event["createdAt"][:10],
                           })
 
@@ -467,11 +489,15 @@ jobs:
                   "project": metadata,
                   "sprints": sorted(
                       sprints.values(),
-                      key=lambda x: x["start"],
+                      key=lambda value: value["start"],
                   ),
                   "priorities": PRIORITIES,
                   "issues": issues,
               }
+
+          # ==================================================
+          # Build JSON files
+          # ==================================================
 
           output_projects = []
 
@@ -510,7 +536,18 @@ jobs:
               )
           )
 
+          print(
+              json.dumps(
+                  output_projects,
+                  indent=2,
+              )
+          )
+
           PY
+
+      # ======================================================
+      # Dashboard
+      # ======================================================
 
       - name: Create dashboard page
         run: |
@@ -528,7 +565,9 @@ jobs:
 
             <title>Engineering Dashboards</title>
 
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script
+              src="https://cdn.jsdelivr.net/npm/chart.js">
+            </script>
 
             <style>
               :root {
@@ -548,6 +587,7 @@ jobs:
                 margin: 0;
                 background: var(--bg);
                 color: var(--text);
+
                 font-family:
                   Inter,
                   system-ui,
@@ -558,7 +598,7 @@ jobs:
               }
 
               main {
-                max-width: 1450px;
+                max-width: 1500px;
                 margin: auto;
                 padding: 32px;
               }
@@ -590,8 +630,10 @@ jobs:
 
               .kpis {
                 display: grid;
+
                 grid-template-columns:
                   repeat(5,1fr);
+
                 gap: 15px;
                 margin-bottom: 18px;
               }
@@ -618,8 +660,10 @@ jobs:
 
               .clickable:hover {
                 background: #fafcff;
+
                 box-shadow:
-                  0 4px 15px rgba(0,0,0,.06);
+                  0 4px 15px
+                  rgba(0,0,0,.06);
               }
 
               .label {
@@ -654,9 +698,12 @@ jobs:
               th,
               td {
                 padding: 11px;
+
                 border-bottom:
                   1px solid #eef1f5;
+
                 text-align: right;
+                vertical-align: top;
               }
 
               th:first-child,
@@ -667,8 +714,10 @@ jobs:
               .metric-cell {
                 cursor: pointer;
                 font-weight: 600;
-                text-decoration: underline;
-                text-decoration-style: dotted;
+
+                text-decoration:
+                  underline dotted;
+
                 text-underline-offset: 3px;
               }
 
@@ -677,15 +726,23 @@ jobs:
                 color: var(--blue);
               }
 
+              /* ==========================================
+                 Drilldown modal
+                 ========================================== */
+
               .modal-backdrop {
                 position: fixed;
                 inset: 0;
                 z-index: 1000;
-                background: rgba(15,23,42,.48);
+
+                background:
+                  rgba(15,23,42,.48);
+
                 display: flex;
-                justify-content: center;
                 align-items: center;
-                padding: 28px;
+                justify-content: center;
+
+                padding: 20px;
               }
 
               .modal-backdrop.hidden {
@@ -693,52 +750,95 @@ jobs:
               }
 
               .modal {
-                width: min(1200px,96vw);
-                max-height: 88vh;
+                width: min(1500px,98vw);
+                max-height: 90vh;
+
                 background: white;
                 border-radius: 16px;
+
                 overflow: hidden;
+
                 box-shadow:
-                  0 30px 80px rgba(0,0,0,.25);
+                  0 30px 80px
+                  rgba(0,0,0,.25);
               }
 
               .modal-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
+
                 padding: 20px 24px;
+
                 border-bottom:
                   1px solid var(--border);
               }
 
+              .modal-header h2 {
+                margin: 0 0 5px;
+              }
+
               .modal-body {
-                max-height: 70vh;
+                max-height: 75vh;
                 overflow: auto;
-                padding: 0 24px 24px;
+              }
+
+              .drilldown-table {
+                min-width: 1500px;
+              }
+
+              .drilldown-table th {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+
+                background: #f8fafc;
+
+                white-space: nowrap;
+              }
+
+              .drilldown-table td {
+                font-size: 12px;
+              }
+
+              .drilldown-table
+              .issue-title {
+                min-width: 260px;
+                max-width: 380px;
+                text-align: left;
+              }
+
+              .date-list {
+                white-space: nowrap;
+                line-height: 1.6;
               }
 
               .close-button {
                 border: 0;
                 background: transparent;
+
                 font-size: 30px;
+                line-height: 1;
+
                 cursor: pointer;
               }
 
               .issue-link {
                 color: var(--blue);
                 text-decoration: none;
+                white-space: nowrap;
               }
 
               .issue-link:hover {
                 text-decoration: underline;
               }
 
-              .issue-title {
-                text-align: left;
+              .highlight-column {
+                background: #eef4ff;
               }
 
               .empty-state {
-                padding: 35px;
+                padding: 40px;
                 text-align: center;
                 color: var(--muted);
               }
@@ -752,6 +852,10 @@ jobs:
                 .grid {
                   grid-template-columns: 1fr;
                 }
+
+                main {
+                  padding: 18px;
+                }
               }
             </style>
           </head>
@@ -760,7 +864,9 @@ jobs:
 
             <main>
 
-              <h1>Engineering Dashboards</h1>
+              <h1>
+                Engineering Dashboards
+              </h1>
 
               <div class="muted">
                 Real GitHub Project data
@@ -771,6 +877,8 @@ jobs:
                 <select id="sprintSelect"></select>
               </div>
 
+              <!-- KPI cards -->
+
               <section class="kpis">
 
                 <div
@@ -778,8 +886,12 @@ jobs:
                   id="openedCard">
 
                   <div class="label">Opened</div>
-                  <div class="number" id="opened">-</div>
 
+                  <div
+                    class="number"
+                    id="opened">
+                    -
+                  </div>
                 </div>
 
                 <div
@@ -795,7 +907,6 @@ jobs:
                     id="development">
                     -
                   </div>
-
                 </div>
 
                 <div
@@ -811,7 +922,6 @@ jobs:
                     id="qa">
                     -
                   </div>
-
                 </div>
 
                 <div
@@ -827,25 +937,26 @@ jobs:
                     id="passed">
                     -
                   </div>
-
                 </div>
 
                 <div
                   class="card clickable"
                   id="closedCard">
 
-                  <div class="label">Closed</div>
+                  <div class="label">
+                    Closed
+                  </div>
 
                   <div
                     class="number"
                     id="closed">
                     -
                   </div>
-
                 </div>
 
               </section>
 
+              <!-- Charts -->
 
               <div class="grid">
 
@@ -854,7 +965,7 @@ jobs:
                   <h3>Sprint Flow</h3>
 
                   <div class="muted">
-                    Click a bar to view issues
+                    Click a bar to view issue details
                   </div>
 
                   <div class="chart">
@@ -863,7 +974,6 @@ jobs:
 
                 </section>
 
-
                 <section class="card">
 
                   <h3>
@@ -871,7 +981,7 @@ jobs:
                   </h3>
 
                   <div class="muted">
-                    Click a segment to view issues
+                    Click a segment to view issue details
                   </div>
 
                   <div class="chart">
@@ -882,13 +992,16 @@ jobs:
 
               </div>
 
+              <!-- Priority table -->
 
               <section class="card">
 
-                <h3>Flow by Priority</h3>
+                <h3>
+                  Flow by Priority
+                </h3>
 
                 <div class="muted">
-                  Click a count to view issues
+                  Click any count to drill into the underlying data
                 </div>
 
                 <table>
@@ -915,6 +1028,9 @@ jobs:
 
             </main>
 
+            <!-- ==========================================
+                 Drilldown
+                 ========================================== -->
 
             <div
               id="drilldownBackdrop"
@@ -944,7 +1060,9 @@ jobs:
 
                 <div class="modal-body">
 
-                  <table>
+                  <table
+                    class="drilldown-table"
+                    id="drilldownTable">
 
                     <thead>
                       <tr>
@@ -952,13 +1070,37 @@ jobs:
                         <th>Title</th>
                         <th>Priority</th>
                         <th>Type</th>
-                        <th>Date</th>
+                        <th data-status="opened">
+                          Open Date
+                        </th>
+                        <th data-status="Scoping">
+                          Scoping
+                        </th>
+                        <th data-status="In Development">
+                          In Development
+                        </th>
+                        <th data-status="QA Testing">
+                          QA Testing
+                        </th>
+                        <th data-status="QA Passed">
+                          QA Passed
+                        </th>
+                        <th data-status="Test">
+                          Test
+                        </th>
+                        <th data-status="Stage">
+                          Stage
+                        </th>
+                        <th data-status="Production">
+                          Production
+                        </th>
+                        <th data-status="closed">
+                          Close Date
+                        </th>
                       </tr>
                     </thead>
 
-                    <tbody
-                      id="drilldownRows">
-                    </tbody>
+                    <tbody id="drilldownRows"></tbody>
 
                   </table>
 
@@ -977,14 +1119,18 @@ jobs:
 
             </div>
 
-
             <script>
 
               let projectData = null;
 
+              // ============================================
+              // Helpers
+              // ============================================
 
-              function within(date,sprint) {
-
+              function within(
+                date,
+                sprint
+              ) {
                 return (
                   date
                   &&
@@ -992,57 +1138,42 @@ jobs:
                   &&
                   date <= sprint.end
                 );
-
               }
 
-
               function issueId(issue) {
-
                 return (
                   issue.repository
                   + "#"
                   + issue.number
                 );
-
               }
 
-
               function isBug(issue) {
-
                 return (
                   (issue.issueType || "")
                   .toLowerCase()
                   === "bug"
                 );
-
               }
 
-
               function isEnhancement(issue) {
-
                 return (
                   (issue.issueType || "")
                   .toLowerCase()
                   === "enhancement"
                 );
-
               }
 
-
               function escapeHtml(value) {
-
                 return String(value ?? "")
                   .replaceAll("&","&amp;")
                   .replaceAll("<","&lt;")
                   .replaceAll(">","&gt;")
                   .replaceAll('"',"&quot;")
                   .replaceAll("'","&#039;");
-
               }
 
-
               function selectedSprint() {
-
                 if (!projectData) {
                   return null;
                 }
@@ -1060,22 +1191,40 @@ jobs:
                   projectData.sprints[index]
                   || null
                 );
-
               }
 
+              function statusDates(
+                issue,
+                status
+              ) {
+                return (
+                  issue.events
+                  .filter(event =>
+                    event.status === status
+                  )
+                  .map(event =>
+                    event.date
+                  )
+                  .sort()
+                );
+              }
+
+              function dateHtml(dates) {
+                return dates
+                  .map(escapeHtml)
+                  .join("<br>");
+              }
 
               function uniqueStatus(
                 issues,
                 status,
                 sprint
               ) {
-
-                const result = new Set();
+                const ids =
+                  new Set();
 
                 issues.forEach(issue => {
-
                   issue.events.forEach(event => {
-
                     if (
                       event.status === status
                       &&
@@ -1084,27 +1233,24 @@ jobs:
                         sprint
                       )
                     ) {
-
-                      result.add(
+                      ids.add(
                         issueId(issue)
                       );
-
                     }
-
                   });
-
                 });
 
-                return result.size;
-
+                return ids.size;
               }
 
+              // ============================================
+              // Metrics
+              // ============================================
 
               function calculate(
                 sprint,
                 priority = null
               ) {
-
                 const issues =
                   projectData.issues.filter(
                     issue =>
@@ -1112,7 +1258,6 @@ jobs:
                       ||
                       issue.priority === priority
                   );
-
 
                 const opened =
                   issues.filter(issue =>
@@ -1122,7 +1267,6 @@ jobs:
                     )
                   );
 
-
                 const closed =
                   issues.filter(issue =>
                     within(
@@ -1131,9 +1275,7 @@ jobs:
                     )
                   );
 
-
                 return {
-
                   opened:
                     opened.length,
 
@@ -1170,18 +1312,18 @@ jobs:
                     closed.filter(
                       isBug
                     ).length
-
                 };
-
               }
 
+              // ============================================
+              // Issues behind a metric
+              // ============================================
 
               function matchingIssues(
                 sprint,
                 metric,
                 priority = null
               ) {
-
                 const issues =
                   projectData.issues.filter(
                     issue =>
@@ -1190,82 +1332,49 @@ jobs:
                       issue.priority === priority
                   );
 
-
                 if (metric === "opened") {
-
-                  return issues
-                    .filter(issue =>
+                  return issues.filter(
+                    issue =>
                       within(
                         issue.opened,
                         sprint
                       )
-                    )
-                    .map(issue => ({
-                      ...issue,
-                      metricDate:
-                        issue.opened
-                    }));
-
+                  );
                 }
-
 
                 if (metric === "closed") {
-
-                  return issues
-                    .filter(issue =>
+                  return issues.filter(
+                    issue =>
                       within(
                         issue.closed,
                         sprint
                       )
-                    )
-                    .map(issue => ({
-                      ...issue,
-                      metricDate:
-                        issue.closed
-                    }));
-
+                  );
                 }
 
-
                 if (metric === "bugOpened") {
-
-                  return issues
-                    .filter(issue =>
+                  return issues.filter(
+                    issue =>
                       isBug(issue)
                       &&
                       within(
                         issue.opened,
                         sprint
                       )
-                    )
-                    .map(issue => ({
-                      ...issue,
-                      metricDate:
-                        issue.opened
-                    }));
-
+                  );
                 }
 
-
                 if (metric === "bugClosed") {
-
-                  return issues
-                    .filter(issue =>
+                  return issues.filter(
+                    issue =>
                       isBug(issue)
                       &&
                       within(
                         issue.closed,
                         sprint
                       )
-                    )
-                    .map(issue => ({
-                      ...issue,
-                      metricDate:
-                        issue.closed
-                    }));
-
+                  );
                 }
-
 
                 const statusMap = {
                   development:
@@ -1278,70 +1387,35 @@ jobs:
                     "QA Passed"
                 };
 
-
                 const status =
                   statusMap[metric];
-
 
                 if (!status) {
                   return [];
                 }
 
-
-                const matches =
-                  new Map();
-
-
-                issues.forEach(issue => {
-
-                  const dates =
-                    issue.events
-                    .filter(event =>
-                      event.status === status
-                      &&
-                      within(
-                        event.date,
-                        sprint
-                      )
+                return issues.filter(issue =>
+                  issue.events.some(event =>
+                    event.status === status
+                    &&
+                    within(
+                      event.date,
+                      sprint
                     )
-                    .map(event =>
-                      event.date
-                    )
-                    .sort();
-
-
-                  if (!dates.length) {
-                    return;
-                  }
-
-
-                  matches.set(
-                    issueId(issue),
-                    {
-                      ...issue,
-                      metricDate:
-                        dates[0]
-                    }
-                  );
-
-                });
-
-
-                return [
-                  ...matches.values()
-                ];
-
+                  )
+                );
               }
 
+              // ============================================
+              // Worked-on issues
+              // ============================================
 
               function workedIssues(
                 sprint,
                 issueType
               ) {
-
                 const worked =
                   new Set();
-
 
                 projectData
                   .issues
@@ -1350,36 +1424,26 @@ jobs:
                     const id =
                       issueId(issue);
 
-
                     if (
                       within(
                         issue.closed,
                         sprint
                       )
                     ) {
-
                       worked.add(id);
-
                     }
 
-
                     issue.events.forEach(event => {
-
                       if (
                         within(
                           event.date,
                           sprint
                         )
                       ) {
-
                         worked.add(id);
-
                       }
-
                     });
-
                   });
-
 
                 return projectData
                   .issues
@@ -1393,13 +1457,11 @@ jobs:
                       return false;
                     }
 
-
                     if (
                       issueType === "bug"
                     ) {
                       return isBug(issue);
                     }
-
 
                     if (
                       issueType ===
@@ -1410,74 +1472,38 @@ jobs:
                       );
                     }
 
-
                     return true;
-
-                  })
-                  .map(issue => {
-
-                    const dates =
-                      issue.events
-                      .filter(event =>
-                        within(
-                          event.date,
-                          sprint
-                        )
-                      )
-                      .map(event =>
-                        event.date
-                      );
-
-
-                    if (
-                      within(
-                        issue.closed,
-                        sprint
-                      )
-                    ) {
-
-                      dates.push(
-                        issue.closed
-                      );
-
-                    }
-
-
-                    dates.sort();
-
-
-                    return {
-                      ...issue,
-                      metricDate:
-                        dates[0] || ""
-                    };
-
                   });
-
               }
 
+              // ============================================
+              // Drilldown
+              // ============================================
+
+              function clearHighlight() {
+                document
+                  .querySelectorAll(
+                    ".highlight-column"
+                  )
+                  .forEach(element =>
+                    element.classList.remove(
+                      "highlight-column"
+                    )
+                  );
+              }
 
               function openDrilldown(
                 title,
                 sprint,
-                issues
+                issues,
+                highlight = null
               ) {
-
-                console.log(
-                  "Opening drilldown:",
-                  title,
-                  sprint,
-                  issues
-                );
-
-
                 document
                   .getElementById(
                     "drilldownTitle"
                   )
                   .textContent =
                     title;
-
 
                 document
                   .getElementById(
@@ -1488,44 +1514,78 @@ jobs:
                     `${issues.length} issue` +
                     `${issues.length === 1 ? "" : "s"}`;
 
-
                 const tbody =
                   document.getElementById(
                     "drilldownRows"
                   );
-
 
                 const empty =
                   document.getElementById(
                     "drilldownEmpty"
                   );
 
-
                 tbody.innerHTML = "";
 
+                clearHighlight();
 
                 if (!issues.length) {
-
                   empty.style.display =
                     "block";
-
                 } else {
-
                   empty.style.display =
                     "none";
 
-
                   issues.forEach(issue => {
+
+                    const scoping =
+                      statusDates(
+                        issue,
+                        "Scoping"
+                      );
+
+                    const development =
+                      statusDates(
+                        issue,
+                        "In Development"
+                      );
+
+                    const qaTesting =
+                      statusDates(
+                        issue,
+                        "QA Testing"
+                      );
+
+                    const qaPassed =
+                      statusDates(
+                        issue,
+                        "QA Passed"
+                      );
+
+                    const test =
+                      statusDates(
+                        issue,
+                        "Test"
+                      );
+
+                    const stage =
+                      statusDates(
+                        issue,
+                        "Stage"
+                      );
+
+                    const production =
+                      statusDates(
+                        issue,
+                        "Production"
+                      );
 
                     const row =
                       document
                       .createElement("tr");
 
-
                     row.innerHTML = `
 
                       <td>
-
                         <a
                           class="issue-link"
                           href="${escapeHtml(issue.url)}"
@@ -1539,7 +1599,6 @@ jobs:
                           )}
 
                         </a>
-
                       </td>
 
                       <td class="issue-title">
@@ -1560,22 +1619,106 @@ jobs:
                         )}
                       </td>
 
-                      <td>
+                      <td
+                        class="date-list"
+                        data-status="opened">
+
                         ${escapeHtml(
-                          issue.metricDate
+                          issue.opened
+                          || ""
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="Scoping">
+
+                        ${dateHtml(
+                          scoping
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="In Development">
+
+                        ${dateHtml(
+                          development
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="QA Testing">
+
+                        ${dateHtml(
+                          qaTesting
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="QA Passed">
+
+                        ${dateHtml(
+                          qaPassed
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="Test">
+
+                        ${dateHtml(
+                          test
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="Stage">
+
+                        ${dateHtml(
+                          stage
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="Production">
+
+                        ${dateHtml(
+                          production
+                        )}
+                      </td>
+
+                      <td
+                        class="date-list"
+                        data-status="closed">
+
+                        ${escapeHtml(
+                          issue.closed
                           || ""
                         )}
                       </td>
 
                     `;
 
-
                     tbody.appendChild(row);
-
                   });
-
                 }
 
+                if (highlight) {
+                  document
+                    .querySelectorAll(
+                      `[data-status="${highlight}"]`
+                    )
+                    .forEach(element =>
+                      element.classList.add(
+                        "highlight-column"
+                      )
+                    );
+                }
 
                 document
                   .getElementById(
@@ -1583,21 +1726,16 @@ jobs:
                   )
                   .classList
                   .remove("hidden");
-
               }
 
-
               function closeDrilldown() {
-
                 document
                   .getElementById(
                     "drilldownBackdrop"
                   )
                   .classList
                   .add("hidden");
-
               }
-
 
               document
                 .getElementById(
@@ -1607,7 +1745,6 @@ jobs:
                   "click",
                   closeDrilldown
                 );
-
 
               document
                 .getElementById(
@@ -1621,14 +1758,10 @@ jobs:
                       event.target.id ===
                       "drilldownBackdrop"
                     ) {
-
                       closeDrilldown();
-
                     }
-
                   }
                 );
-
 
               document
                 .addEventListener(
@@ -1638,14 +1771,14 @@ jobs:
                     if (
                       event.key === "Escape"
                     ) {
-
                       closeDrilldown();
-
                     }
-
                   }
                 );
 
+              // ============================================
+              // Charts
+              // ============================================
 
               const flowMetrics = [
                 "opened",
@@ -1655,7 +1788,6 @@ jobs:
                 "closed"
               ];
 
-
               const flowLabels = [
                 "Opened",
                 "In Development",
@@ -1664,6 +1796,28 @@ jobs:
                 "Closed"
               ];
 
+              const metricHighlight = {
+                opened:
+                  "opened",
+
+                development:
+                  "In Development",
+
+                qa:
+                  "QA Testing",
+
+                passed:
+                  "QA Passed",
+
+                closed:
+                  "closed",
+
+                bugOpened:
+                  "opened",
+
+                bugClosed:
+                  "closed"
+              };
 
               const flowChart =
                 new Chart(
@@ -1684,7 +1838,6 @@ jobs:
                     },
 
                     options: {
-
                       responsive: true,
 
                       maintainAspectRatio:
@@ -1699,18 +1852,14 @@ jobs:
                             return;
                           }
 
-
                           const index =
                             elements[0].index;
-
 
                           const sprint =
                             selectedSprint();
 
-
                           const metric =
                             flowMetrics[index];
-
 
                           openDrilldown(
                             flowLabels[index],
@@ -1718,15 +1867,15 @@ jobs:
                             matchingIssues(
                               sprint,
                               metric
-                            )
+                            ),
+                            metricHighlight[
+                              metric
+                            ]
                           );
-
                         }
-
                     }
                   }
                 );
-
 
               const mixChart =
                 new Chart(
@@ -1737,7 +1886,6 @@ jobs:
                     type: "doughnut",
 
                     data: {
-
                       labels: [
                         "Bugs",
                         "Enhancements"
@@ -1746,11 +1894,9 @@ jobs:
                       datasets: [{
                         data: []
                       }]
-
                     },
 
                     options: {
-
                       responsive: true,
 
                       maintainAspectRatio:
@@ -1765,20 +1911,16 @@ jobs:
                             return;
                           }
 
-
                           const index =
                             elements[0].index;
 
-
                           const sprint =
                             selectedSprint();
-
 
                           const type =
                             index === 0
                             ? "bug"
                             : "enhancement";
-
 
                           openDrilldown(
                             index === 0
@@ -1792,39 +1934,36 @@ jobs:
                               type
                             )
                           );
-
                         }
-
                     }
                   }
                 );
 
+              // ============================================
+              // Render selected sprint
+              // ============================================
 
               function updateSprint() {
-
                 if (!projectData) {
                   return;
                 }
 
-
                 const sprint =
                   selectedSprint();
-
 
                 if (!sprint) {
                   return;
                 }
 
-
                 const total =
                   calculate(sprint);
 
-
                 document
-                  .getElementById("opened")
+                  .getElementById(
+                    "opened"
+                  )
                   .textContent =
                     total.opened;
-
 
                 document
                   .getElementById(
@@ -1833,121 +1972,120 @@ jobs:
                   .textContent =
                     total.development;
 
-
                 document
-                  .getElementById("qa")
+                  .getElementById(
+                    "qa"
+                  )
                   .textContent =
                     total.qa;
 
-
                 document
-                  .getElementById("passed")
+                  .getElementById(
+                    "passed"
+                  )
                   .textContent =
                     total.passed;
 
-
                 document
-                  .getElementById("closed")
+                  .getElementById(
+                    "closed"
+                  )
                   .textContent =
                     total.closed;
 
+                // KPI drilldowns
 
                 document
                   .getElementById(
                     "openedCard"
                   )
                   .onclick = () =>
-
                     openDrilldown(
                       "Opened",
                       sprint,
                       matchingIssues(
                         sprint,
                         "opened"
-                      )
+                      ),
+                      "opened"
                     );
-
 
                 document
                   .getElementById(
                     "developmentCard"
                   )
                   .onclick = () =>
-
                     openDrilldown(
                       "In Development",
                       sprint,
                       matchingIssues(
                         sprint,
                         "development"
-                      )
+                      ),
+                      "In Development"
                     );
-
 
                 document
                   .getElementById(
                     "qaCard"
                   )
                   .onclick = () =>
-
                     openDrilldown(
                       "QA Testing",
                       sprint,
                       matchingIssues(
                         sprint,
                         "qa"
-                      )
+                      ),
+                      "QA Testing"
                     );
-
 
                 document
                   .getElementById(
                     "passedCard"
                   )
                   .onclick = () =>
-
                     openDrilldown(
                       "QA Passed",
                       sprint,
                       matchingIssues(
                         sprint,
                         "passed"
-                      )
+                      ),
+                      "QA Passed"
                     );
-
 
                 document
                   .getElementById(
                     "closedCard"
                   )
                   .onclick = () =>
-
                     openDrilldown(
                       "Closed",
                       sprint,
                       matchingIssues(
                         sprint,
                         "closed"
-                      )
+                      ),
+                      "closed"
                     );
 
+                // Flow chart
 
                 flowChart
                   .data
                   .datasets[0]
                   .data = [
-
                     total.opened,
                     total.development,
                     total.qa,
                     total.passed,
                     total.closed
-
                   ];
-
 
                 flowChart.update();
 
+                // Work mix
 
                 const bugs =
                   workedIssues(
@@ -1955,114 +2093,105 @@ jobs:
                     "bug"
                   );
 
-
                 const enhancements =
                   workedIssues(
                     sprint,
                     "enhancement"
                   );
 
-
                 mixChart
                   .data
                   .datasets[0]
                   .data = [
-
                     bugs.length,
                     enhancements.length
-
                   ];
-
 
                 mixChart.update();
 
+                // Priority rows
 
                 const tbody =
                   document.getElementById(
                     "rows"
                   );
 
-
                 tbody.innerHTML = "";
-
 
                 projectData
                   .priorities
                   .forEach(priority => {
 
-                    const m =
+                    const metric =
                       calculate(
                         sprint,
                         priority
                       );
 
-
                     const ratio =
-                      m.bugClosed === 0
-
+                      metric.bugClosed === 0
                       ? "—"
-
                       : (
-                          m.bugOpened
+                          metric.bugOpened
                           /
-                          m.bugClosed
+                          metric.bugClosed
                         ).toFixed(2)
                         + "x";
-
 
                     const row =
                       document
                       .createElement("tr");
 
-
                     row.innerHTML = `
 
                       <td>
                         <strong>
-                          ${escapeHtml(priority)}
+                          ${escapeHtml(
+                            priority
+                          )}
                         </strong>
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="opened">
-                        ${m.opened}
+                        ${metric.opened}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="development">
-                        ${m.development}
+                        ${metric.development}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="qa">
-                        ${m.qa}
+                        ${metric.qa}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="passed">
-                        ${m.passed}
+                        ${metric.passed}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="closed">
-                        ${m.closed}
+                        ${metric.closed}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="bugOpened">
-                        ${m.bugOpened}
+                        ${metric.bugOpened}
                       </td>
 
                       <td
                         class="metric-cell"
                         data-metric="bugClosed">
-                        ${m.bugClosed}
+                        ${metric.bugClosed}
                       </td>
 
                       <td>
@@ -2070,7 +2199,6 @@ jobs:
                       </td>
 
                     `;
-
 
                     row
                       .querySelectorAll(
@@ -2082,12 +2210,10 @@ jobs:
                           "click",
                           () => {
 
-                            const metric =
+                            const metricName =
                               cell.dataset.metric;
 
-
                             const labels = {
-
                               opened:
                                 "Opened",
 
@@ -2108,58 +2234,58 @@ jobs:
 
                               bugClosed:
                                 "Bugs Closed"
-
                             };
 
-
                             openDrilldown(
-
                               `${priority} · ` +
-                              `${labels[metric]}`,
+                              `${labels[
+                                metricName
+                              ]}`,
 
                               sprint,
 
                               matchingIssues(
                                 sprint,
-                                metric,
+                                metricName,
                                 priority
-                              )
+                              ),
 
+                              metricHighlight[
+                                metricName
+                              ]
                             );
-
                           }
                         );
-
                       });
 
-
-                    tbody.appendChild(row);
-
+                    tbody.appendChild(
+                      row
+                    );
                   });
-
               }
 
+              // ============================================
+              // Load Project
+              // ============================================
 
               function loadProject(project) {
-
                 fetch(
                   `data/${project.slug}.json`
                 )
-                .then(r => r.json())
+                .then(response =>
+                  response.json()
+                )
                 .then(data => {
 
                   projectData = data;
-
 
                   const sprintSelect =
                     document.getElementById(
                       "sprintSelect"
                     );
 
-
                   sprintSelect.innerHTML =
                     "";
-
 
                   data.sprints.forEach(
                     (sprint,index) => {
@@ -2170,25 +2296,20 @@ jobs:
                           "option"
                         );
 
-
-                      option.value = index;
-
+                      option.value =
+                        index;
 
                       option.textContent =
-
                         `${sprint.name} · ` +
                         `${sprint.start} – ` +
                         `${sprint.end}`;
-
 
                       sprintSelect
                         .appendChild(
                           option
                         );
-
                     }
                   );
-
 
                   sprintSelect.value =
                     Math.max(
@@ -2196,23 +2317,26 @@ jobs:
                       0
                     );
 
-
                   updateSprint();
-
                 });
-
               }
 
+              // ============================================
+              // Project selector
+              // ============================================
 
-              fetch("data/projects.json")
-              .then(r => r.json())
+              fetch(
+                "data/projects.json"
+              )
+              .then(response =>
+                response.json()
+              )
               .then(projects => {
 
                 const select =
                   document.getElementById(
                     "projectSelect"
                   );
-
 
                 projects.forEach(
                   (project,index) => {
@@ -2223,32 +2347,25 @@ jobs:
                         "option"
                       );
 
-
-                    option.value = index;
-
+                    option.value =
+                      index;
 
                     option.textContent =
-
                       `${project.title} ` +
                       `(${project.issueCount} issues)`;
 
-
-                    select.appendChild(
-                      option
-                    );
-
+                    select
+                      .appendChild(
+                        option
+                      );
                   }
                 );
 
-
                 if (projects.length) {
-
                   loadProject(
                     projects[0]
                   );
-
                 }
-
 
                 select.addEventListener(
                   "change",
@@ -2261,12 +2378,9 @@ jobs:
                         )
                       ]
                     );
-
                   }
                 );
-
               });
-
 
               document
                 .getElementById(

@@ -1,15 +1,7 @@
-name: Engineering Project Dashboards
+name: Test Engineering Dashboard
 
 on:
-  push:
-    branches:
-      - main
-
   workflow_dispatch:
-
-  schedule:
-    # Rebuild every weekday at 7 AM UTC
-    - cron: "0 7 * * 1-5"
 
 permissions:
   contents: read
@@ -20,48 +12,37 @@ concurrency:
   group: github-pages
   cancel-in-progress: true
 
-env:
-  ORG: ${{ github.repository_owner }}
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ORG: ${{ github.repository_owner }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # ------------------------------------------------------
-      # Authenticate as GitHub App
-      # ------------------------------------------------------
 
       - name: Generate GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+          private-key: ${{ secrets.ACTIONS_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      # ------------------------------------------------------
-      # Build all project JSON files + Jekyll pages
-      # ------------------------------------------------------
-
-      - name: Generate dashboards
+      - name: Discover projects and build dashboard data
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          mkdir -p dashboard/data
-          mkdir -p dashboard/projects
-          mkdir -p dashboard/_layouts
-          mkdir -p dashboard/assets
+          mkdir -p site/data
 
           python3 <<'PY'
           import json
           import os
-          import re
           import subprocess
           from datetime import datetime, timedelta
           from pathlib import Path
@@ -82,10 +63,6 @@ jobs:
               "QA Passed",
           }
 
-
-          # ==================================================
-          # Helpers
-          # ==================================================
 
           def graphql(query, variables=None):
               variables = variables or {}
@@ -117,54 +94,19 @@ jobs:
               return json.loads(result.stdout)
 
 
-          def slugify(value):
-              value = value.lower().strip()
-              value = re.sub(r"[^a-z0-9]+", "-", value)
-              return value.strip("-")
+          # ==============================================
+          # Discover all open Project V2 projects
+          # ==============================================
 
-
-          def issue_priority(issue):
-              values = (
-                  issue
-                  .get("issueFieldValues", {})
-                  .get("nodes", [])
-              )
-
-              for value in values:
-                  field = value.get("field") or {}
-
-                  if field.get("name") == "Priority":
-                      return value.get("name") or "Unspecified"
-
-              return "Unspecified"
-
-
-          # ==================================================
-          # Discover ALL organization projects
-          # ==================================================
-
-          PROJECT_LIST_QUERY = """
-          query(
-            $org: String!,
-            $cursor: String
-          ) {
+          PROJECTS_QUERY = """
+          query($org: String!) {
             organization(login: $org) {
-              projectsV2(
-                first: 100,
-                after: $cursor
-              ) {
-                pageInfo {
-                  hasNextPage
-                  endCursor
-                }
-
+              projectsV2(first: 100) {
                 nodes {
-                  id
                   number
                   title
                   shortDescription
                   closed
-                  public
                   url
                 }
               }
@@ -172,44 +114,24 @@ jobs:
           }
           """
 
+          result = graphql(
+              PROJECTS_QUERY,
+              {"org": ORG},
+          )
 
-          projects = []
-          cursor = None
-
-          while True:
-              result = graphql(
-                  PROJECT_LIST_QUERY,
-                  {
-                      "org": ORG,
-                      "cursor": cursor,
-                  },
-              )
-
-              connection = (
+          projects = [
+              p
+              for p in (
                   result["data"]
                   ["organization"]
                   ["projectsV2"]
+                  ["nodes"]
               )
+              if not p["closed"]
+          ]
 
-              for project in connection["nodes"]:
-                  # Skip archived/closed projects.
-                  if project.get("closed"):
-                      continue
+          print(f"Found {len(projects)} open projects")
 
-                  projects.append(project)
-
-              if not connection["pageInfo"]["hasNextPage"]:
-                  break
-
-              cursor = connection["pageInfo"]["endCursor"]
-
-
-          print(f"Discovered {len(projects)} open projects.")
-
-
-          # ==================================================
-          # Project data
-          # ==================================================
 
           PROJECT_QUERY = """
           query(
@@ -219,7 +141,7 @@ jobs:
           ) {
             organization(login: $org) {
               projectV2(number: $number) {
-                id
+
                 number
                 title
                 shortDescription
@@ -227,19 +149,18 @@ jobs:
 
                 fields(first: 100) {
                   nodes {
+
                     ... on ProjectV2IterationField {
                       name
 
                       configuration {
                         iterations {
-                          id
                           title
                           startDate
                           duration
                         }
 
                         completedIterations {
-                          id
                           title
                           startDate
                           duration
@@ -259,15 +180,40 @@ jobs:
                   }
 
                   nodes {
-                    id
+                    fieldValues(first: 50) {
+                      nodes {
+
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+
+                        ... on ProjectV2ItemFieldIterationValue {
+                          title
+                          startDate
+                          duration
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
 
                     content {
                       ... on Issue {
                         number
                         title
+                        state
                         createdAt
                         closedAt
-                        state
                         url
 
                         repository {
@@ -280,6 +226,7 @@ jobs:
 
                         issueFieldValues(first: 30) {
                           nodes {
+
                             ... on IssueFieldSingleSelectValue {
                               name
 
@@ -301,20 +248,11 @@ jobs:
           """
 
 
-          # ==================================================
-          # Project status history
-          #
-          # The event contains its Project V2 reference,
-          # so we can safely filter events to the dashboard's
-          # specific project.
-          # ==================================================
-
           TIMELINE_QUERY = """
           query(
             $owner: String!,
             $repo: String!,
-            $number: Int!,
-            $cursor: String
+            $number: Int!
           ) {
             repository(
               owner: $owner,
@@ -322,26 +260,16 @@ jobs:
             ) {
               issue(number: $number) {
                 timelineItems(
-                  first: 100,
-                  after: $cursor,
+                  first: 250,
                   itemTypes: [
                     PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
                   ]
                 ) {
-                  pageInfo {
-                    hasNextPage
-                    endCursor
-                  }
-
                   nodes {
                     ... on ProjectV2ItemStatusChangedEvent {
                       createdAt
                       previousStatus
                       status
-
-                      project {
-                        number
-                      }
                     }
                   }
                 }
@@ -351,84 +279,44 @@ jobs:
           """
 
 
-          def get_status_events(issue, project_number):
-              owner, repo = issue["repository"].split("/", 1)
+          def issue_priority(issue, item):
+              # Prefer issue-level custom Priority
+              for value in (
+                  issue
+                  .get("issueFieldValues", {})
+                  .get("nodes", [])
+              ):
+                  field = value.get("field") or {}
 
-              cursor = None
-              events = []
+                  if field.get("name") == "Priority":
+                      return value.get("name") or "Unspecified"
 
-              while True:
-                  response = graphql(
-                      TIMELINE_QUERY,
-                      {
-                          "owner": owner,
-                          "repo": repo,
-                          "number": issue["number"],
-                          "cursor": cursor,
-                      },
-                  )
+              # Fall back to project-level Priority
+              for value in (
+                  item
+                  .get("fieldValues", {})
+                  .get("nodes", [])
+              ):
+                  field = value.get("field") or {}
 
-                  issue_node = (
-                      response
-                      .get("data", {})
-                      .get("repository", {})
-                      .get("issue")
-                  )
+                  if field.get("name") == "Priority":
+                      return value.get("name") or "Unspecified"
 
-                  if not issue_node:
-                      break
+              return "Unspecified"
 
-                  connection = issue_node["timelineItems"]
-
-                  for event in connection["nodes"]:
-                      project = event.get("project") or {}
-
-                      # Critical: only events from THIS project.
-                      if project.get("number") != project_number:
-                          continue
-
-                      status = event.get("status")
-
-                      if status not in TRACKED_STATUSES:
-                          continue
-
-                      events.append({
-                          "status": status,
-                          "date": event["createdAt"][:10],
-                      })
-
-                  if not connection["pageInfo"]["hasNextPage"]:
-                      break
-
-                  cursor = connection["pageInfo"]["endCursor"]
-
-              return events
-
-
-          # ==================================================
-          # Load one project
-          # ==================================================
 
           def load_project(project):
-              project_number = project["number"]
-
-              print()
-              print(
-                  f'Project {project_number}: '
-                  f'{project["title"]}'
-              )
-
               cursor = None
-              project_meta = None
-              sprint_map = {}
               issues = []
+              sprints = {}
+              metadata = None
 
               while True:
                   response = graphql(
                       PROJECT_QUERY,
                       {
                           "org": ORG,
-                          "number": project_number,
+                          "number": project["number"],
                           "cursor": cursor,
                       },
                   )
@@ -439,60 +327,46 @@ jobs:
                       ["projectV2"]
                   )
 
-                  if pv2 is None:
-                      return None
-
-                  if project_meta is None:
-                      project_meta = {
+                  if metadata is None:
+                      metadata = {
                           "number": pv2["number"],
                           "title": pv2["title"],
                           "description": (
-                              pv2.get("shortDescription") or ""
+                              pv2.get("shortDescription")
+                              or ""
                           ),
                           "url": pv2["url"],
                       }
 
-                      # --------------------------------------
-                      # Pull real iteration definitions from
-                      # the field actually named "Sprint".
-                      # --------------------------------------
-
                       for field in pv2["fields"]["nodes"]:
-                          if field.get("name") != "Sprint":
+                          if not field.get("configuration"):
                               continue
 
-                          configuration = (
-                              field.get("configuration") or {}
-                          )
+                          config = field["configuration"]
 
-                          iterations = (
-                              configuration.get(
+                          for sprint in (
+                              config.get(
                                   "completedIterations",
                                   []
                               )
                               +
-                              configuration.get(
+                              config.get(
                                   "iterations",
                                   []
                               )
-                          )
-
-                          for sprint in iterations:
+                          ):
                               start = sprint["startDate"]
                               duration = sprint["duration"]
 
-                              start_dt = datetime.fromisoformat(start)
-
-                              end_dt = (
-                                  start_dt
+                              end = (
+                                  datetime.fromisoformat(start)
                                   + timedelta(days=duration - 1)
-                              )
+                              ).date().isoformat()
 
-                              sprint_map[sprint["id"]] = {
-                                  "id": sprint["id"],
+                              sprints[sprint["title"]] = {
                                   "name": sprint["title"],
                                   "start": start,
-                                  "end": end_dt.date().isoformat(),
+                                  "end": end,
                                   "duration": duration,
                               }
 
@@ -501,19 +375,19 @@ jobs:
                   for item in connection["nodes"]:
                       issue = item.get("content")
 
-                      # Drafts and PRs won't contain this shape.
                       if not issue:
                           continue
 
                       if not issue.get("number"):
                           continue
 
-                      repository = (
-                          (issue.get("repository") or {})
+                      repo = (
+                          issue
+                          .get("repository", {})
                           .get("nameWithOwner")
                       )
 
-                      if not repository:
+                      if not repo:
                           continue
 
                       issue_type = (
@@ -524,12 +398,14 @@ jobs:
 
                       issues.append({
                           "number": issue["number"],
-                          "repository": repository,
+                          "repository": repo,
                           "title": issue["title"],
                           "url": issue["url"],
-                          "priority": issue_priority(issue),
+                          "priority": issue_priority(
+                              issue,
+                              item,
+                          ),
                           "issueType": issue_type,
-                          "state": issue["state"],
                           "opened": issue["createdAt"][:10],
                           "closed": (
                               issue["closedAt"][:10]
@@ -544,1091 +420,112 @@ jobs:
 
                   cursor = connection["pageInfo"]["endCursor"]
 
-
-              # ----------------------------------------------
-              # Load status history for all Project issues.
-              # ----------------------------------------------
-
-              for i, issue in enumerate(issues, 1):
+              # Load status events
+              for index, issue in enumerate(issues, 1):
                   print(
-                      f'  [{i}/{len(issues)}] '
+                      f'Project {project["number"]}: '
+                      f'[{index}/{len(issues)}] '
                       f'{issue["repository"]}'
                       f'#{issue["number"]}'
                   )
 
+                  owner, repo = issue["repository"].split("/", 1)
+
                   try:
-                      issue["events"] = get_status_events(
-                          issue,
-                          project_number,
+                      history = graphql(
+                          TIMELINE_QUERY,
+                          {
+                              "owner": owner,
+                              "repo": repo,
+                              "number": issue["number"],
+                          },
                       )
+
+                      nodes = (
+                          history["data"]
+                          ["repository"]
+                          ["issue"]
+                          ["timelineItems"]
+                          ["nodes"]
+                      )
+
+                      for event in nodes:
+                          if (
+                              event.get("status")
+                              not in TRACKED_STATUSES
+                          ):
+                              continue
+
+                          issue["events"].append({
+                              "status": event["status"],
+                              "date": event["createdAt"][:10],
+                          })
 
                   except Exception as exc:
                       print(
-                          f'    Warning: '
-                          f'could not load timeline: {exc}'
+                          f'Warning reading '
+                          f'{issue["repository"]}'
+                          f'#{issue["number"]}: '
+                          f'{exc}'
                       )
 
-
-              sprints = sorted(
-                  sprint_map.values(),
-                  key=lambda x: x["start"],
-              )
-
               return {
-                  "project": project_meta,
-                  "sprints": sprints,
+                  "project": metadata,
+                  "sprints": sorted(
+                      sprints.values(),
+                      key=lambda x: x["start"],
+                  ),
                   "priorities": PRIORITIES,
                   "issues": issues,
               }
 
 
-          # ==================================================
-          # Create dashboard data/page per project
-          # ==================================================
-
-          index = []
+          output_projects = []
 
           for project in projects:
-              slug = (
-                  f'project-{project["number"]}-'
-                  f'{slugify(project["title"])}'
-              )
+              data = load_project(project)
 
-              try:
-                  data = load_project(project)
+              slug = f'project-{project["number"]}'
 
-              except Exception as exc:
-                  print(
-                      f'ERROR loading Project '
-                      f'{project["number"]}: {exc}'
-                  )
-                  continue
-
-              if not data:
-                  continue
-
-              data["project"]["slug"] = slug
-
-              # JSON
               Path(
-                  f"dashboard/data/{slug}.json"
+                  f"site/data/{slug}.json"
               ).write_text(
                   json.dumps(data, indent=2)
               )
 
-              # Jekyll page
-              project_dir = Path(
-                  f"dashboard/projects/{slug}"
-              )
-
-              project_dir.mkdir(
-                  parents=True,
-                  exist_ok=True,
-              )
-
-              safe_title = (
-                  project["title"].replace('"', "'")
-              )
-
-              page = f"""---
-          layout: dashboard
-          title: "{safe_title}"
-          project_slug: "{slug}"
-          ---
-
-          <div
-            id="dashboard"
-            data-project="{slug}">
-          </div>
-          """
-
-              (
-                  project_dir / "index.html"
-              ).write_text(page)
-
-              index.append({
+              output_projects.append({
                   "number": project["number"],
                   "title": project["title"],
                   "description": (
-                      project.get("shortDescription") or ""
+                      project.get("shortDescription")
+                      or ""
                   ),
-                  "url": project["url"],
                   "slug": slug,
                   "issueCount": len(data["issues"]),
                   "sprintCount": len(data["sprints"]),
               })
 
-
           Path(
-              "dashboard/data/projects.json"
+              "site/data/projects.json"
           ).write_text(
-              json.dumps(index, indent=2)
+              json.dumps(
+                  output_projects,
+                  indent=2,
+              )
           )
 
-          print()
           print(
-              f"Generated {len(index)} dashboards."
+              json.dumps(
+                  output_projects,
+                  indent=2,
+              )
           )
 
           PY
 
-      # ------------------------------------------------------
-      # Jekyll layout shared by every project
-      # ------------------------------------------------------
-
-      - name: Create dashboard layout
+      - name: Create dashboard page
         run: |
-          cat > dashboard/_layouts/dashboard.html <<'EOF'
-          <!doctype html>
-          <html lang="en">
-
-          <head>
-            <meta charset="utf-8">
-
-            <meta
-              name="viewport"
-              content="width=device-width,initial-scale=1"
-            >
-
-            <title>
-              {{ page.title }} · Engineering Delivery
-            </title>
-
-            <script
-              src="https://cdn.jsdelivr.net/npm/chart.js">
-            </script>
-
-            <style>
-              :root {
-                --bg: #f5f7fb;
-                --card: #ffffff;
-                --border: #e4e8ef;
-                --text: #172033;
-                --muted: #697386;
-                --blue: #2563eb;
-                --green: #16a34a;
-                --purple: #7c3aed;
-                --orange: #ea580c;
-                --red: #dc2626;
-              }
-
-              * {
-                box-sizing: border-box;
-              }
-
-              body {
-                margin: 0;
-                background: var(--bg);
-                color: var(--text);
-
-                font-family:
-                  Inter,
-                  system-ui,
-                  -apple-system,
-                  BlinkMacSystemFont,
-                  "Segoe UI",
-                  sans-serif;
-              }
-
-              main {
-                max-width: 1500px;
-                margin: auto;
-                padding: 32px;
-              }
-
-              header {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                gap: 20px;
-                margin-bottom: 28px;
-              }
-
-              h1 {
-                margin: 3px 0;
-                font-size: 30px;
-                letter-spacing: -.03em;
-              }
-
-              h2 {
-                margin: 0 0 5px;
-                font-size: 15px;
-              }
-
-              .muted {
-                color: var(--muted);
-                font-size: 13px;
-              }
-
-              a {
-                color: var(--blue);
-                text-decoration: none;
-              }
-
-              .back {
-                background: white;
-                border: 1px solid var(--border);
-                border-radius: 9px;
-                padding: 9px 13px;
-              }
-
-              select {
-                padding: 10px 14px;
-                border: 1px solid var(--border);
-                border-radius: 9px;
-                background: white;
-                margin-bottom: 20px;
-              }
-
-              .kpis {
-                display: grid;
-                grid-template-columns:
-                  repeat(5, minmax(140px,1fr));
-                gap: 16px;
-                margin-bottom: 18px;
-              }
-
-              .card {
-                background: var(--card);
-                border: 1px solid var(--border);
-                border-radius: 14px;
-                padding: 18px;
-                box-shadow:
-                  0 1px 2px rgba(0,0,0,.03);
-              }
-
-              .kpi-label {
-                color: var(--muted);
-                font-size: 11px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: .04em;
-              }
-
-              .kpi-value {
-                margin-top: 7px;
-                font-size: 30px;
-                font-weight: 750;
-              }
-
-              .grid {
-                display: grid;
-                grid-template-columns: 2fr 1fr;
-                gap: 18px;
-                margin-bottom: 18px;
-              }
-
-              .grid-half {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 18px;
-                margin-bottom: 18px;
-              }
-
-              .chart {
-                height: 320px;
-              }
-
-              table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 13px;
-              }
-
-              th {
-                color: var(--muted);
-                font-size: 11px;
-                text-transform: uppercase;
-                text-align: right;
-                padding: 11px;
-                border-bottom:
-                  1px solid var(--border);
-              }
-
-              td {
-                text-align: right;
-                padding: 12px 11px;
-                border-bottom:
-                  1px solid #eff1f5;
-              }
-
-              th:first-child,
-              td:first-child {
-                text-align: left;
-              }
-
-              .empty {
-                text-align: center;
-                padding: 60px 20px;
-              }
-
-              @media(max-width: 950px) {
-                .kpis {
-                  grid-template-columns:
-                    repeat(2,1fr);
-                }
-
-                .grid,
-                .grid-half {
-                  grid-template-columns: 1fr;
-                }
-              }
-            </style>
-          </head>
-
-          <body>
-
-            <main>
-
-              <header>
-                <div>
-                  <div class="muted">
-                    Engineering Delivery
-                  </div>
-
-                  <h1>{{ page.title }}</h1>
-                </div>
-
-                <a
-                  class="back"
-                  href="{{ '/' | relative_url }}">
-                  All Projects
-                </a>
-              </header>
-
-              {{ content }}
-
-              <script
-                src="{{ '/assets/dashboard.js' | relative_url }}">
-              </script>
-
-            </main>
-
-          </body>
-          </html>
-          EOF
-
-      # ------------------------------------------------------
-      # Shared dashboard logic
-      # ------------------------------------------------------
-
-      - name: Create dashboard JavaScript
-        run: |
-          cat > dashboard/assets/dashboard.js <<'EOF'
-
-          const root =
-            document.getElementById("dashboard");
-
-
-          function within(date, sprint) {
-            return !!date &&
-              date >= sprint.start &&
-              date <= sprint.end;
-          }
-
-
-          function isBug(issue) {
-            return (
-              (issue.issueType || "")
-              .toLowerCase()
-              === "bug"
-            );
-          }
-
-
-          function isEnhancement(issue) {
-            return (
-              (issue.issueType || "")
-              .toLowerCase()
-              === "enhancement"
-            );
-          }
-
-
-          function uniqueStatusCount(
-            issues,
-            status,
-            sprint
-          ) {
-            const ids = new Set();
-
-            issues.forEach(issue => {
-              issue.events.forEach(event => {
-                if (
-                  event.status === status
-                  &&
-                  within(event.date, sprint)
-                ) {
-                  ids.add(
-                    issue.repository
-                    + "#"
-                    + issue.number
-                  );
-                }
-              });
-            });
-
-            return ids.size;
-          }
-
-
-          if (root) {
-            const slug =
-              root.dataset.project;
-
-            fetch(
-              `../../data/${slug}.json`
-            )
-            .then(r => r.json())
-            .then(render);
-          }
-
-
-          function render(data) {
-
-            if (!data.sprints.length) {
-              root.innerHTML = `
-                <div class="card empty">
-                  <h2>No Sprint field found</h2>
-
-                  <p class="muted">
-                    This Project does not have an
-                    iteration field named Sprint.
-                  </p>
-                </div>
-              `;
-
-              return;
-            }
-
-
-            root.innerHTML = `
-
-              <select id="sprint"></select>
-
-              <section class="kpis">
-
-                <div class="card">
-                  <div class="kpi-label">
-                    Opened
-                  </div>
-                  <div
-                    id="opened"
-                    class="kpi-value">
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="kpi-label">
-                    In Development
-                  </div>
-                  <div
-                    id="dev"
-                    class="kpi-value">
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="kpi-label">
-                    QA Testing
-                  </div>
-                  <div
-                    id="qa"
-                    class="kpi-value">
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="kpi-label">
-                    QA Passed
-                  </div>
-                  <div
-                    id="passed"
-                    class="kpi-value">
-                  </div>
-                </div>
-
-                <div class="card">
-                  <div class="kpi-label">
-                    Closed
-                  </div>
-                  <div
-                    id="closed"
-                    class="kpi-value">
-                  </div>
-                </div>
-
-              </section>
-
-
-              <div class="grid">
-
-                <section class="card">
-
-                  <h2>Sprint Flow</h2>
-
-                  <div class="muted">
-                    Unique issues reaching each stage
-                  </div>
-
-                  <div class="chart">
-                    <canvas id="flowChart"></canvas>
-                  </div>
-
-                </section>
-
-
-                <section class="card">
-
-                  <h2>Work Mix</h2>
-
-                  <div class="muted">
-                    Bugs vs enhancements worked on
-                  </div>
-
-                  <div class="chart">
-                    <canvas id="mixChart"></canvas>
-                  </div>
-
-                </section>
-
-              </div>
-
-
-              <div class="grid-half">
-
-                <section class="card">
-
-                  <h2>
-                    Bugs Created vs Resolved
-                  </h2>
-
-                  <div class="muted">
-                    By Priority
-                  </div>
-
-                  <div class="chart">
-                    <canvas id="bugChart"></canvas>
-                  </div>
-
-                </section>
-
-
-                <section class="card">
-
-                  <h2>Opened vs Closed Trend</h2>
-
-                  <div class="muted">
-                    Sprint over sprint
-                  </div>
-
-                  <div class="chart">
-                    <canvas id="trendChart"></canvas>
-                  </div>
-
-                </section>
-
-              </div>
-
-
-              <section class="card">
-
-                <h2>Flow by Priority</h2>
-
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Priority</th>
-                      <th>Opened</th>
-                      <th>In Dev</th>
-                      <th>QA Testing</th>
-                      <th>QA Passed</th>
-                      <th>Closed</th>
-                      <th>Bug Opened</th>
-                      <th>Bug Closed</th>
-                      <th>Bug C/R</th>
-                    </tr>
-                  </thead>
-
-                  <tbody id="rows"></tbody>
-                </table>
-
-              </section>
-            `;
-
-
-            const sprintSelect =
-              document.getElementById("sprint");
-
-
-            data.sprints.forEach(
-              (sprint,index) => {
-
-                const option =
-                  document.createElement(
-                    "option"
-                  );
-
-                option.value = index;
-
-                option.textContent =
-                  `${sprint.name} · ` +
-                  `${sprint.start} – ` +
-                  `${sprint.end}`;
-
-                sprintSelect.appendChild(
-                  option
-                );
-              }
-            );
-
-
-            function metrics(
-              sprint,
-              priority = null
-            ) {
-
-              const subset =
-                data.issues.filter(issue =>
-                  !priority
-                  ||
-                  issue.priority === priority
-                );
-
-
-              const opened =
-                subset.filter(issue =>
-                  within(issue.opened, sprint)
-                );
-
-
-              const closed =
-                subset.filter(issue =>
-                  within(issue.closed, sprint)
-                );
-
-
-              return {
-                opened: opened.length,
-
-                development:
-                  uniqueStatusCount(
-                    subset,
-                    "In Development",
-                    sprint
-                  ),
-
-                testing:
-                  uniqueStatusCount(
-                    subset,
-                    "QA Testing",
-                    sprint
-                  ),
-
-                passed:
-                  uniqueStatusCount(
-                    subset,
-                    "QA Passed",
-                    sprint
-                  ),
-
-                closed: closed.length,
-
-                bugOpened:
-                  opened.filter(isBug).length,
-
-                bugClosed:
-                  closed.filter(isBug).length,
-              };
-            }
-
-
-            const flowChart =
-              new Chart(
-                document.getElementById(
-                  "flowChart"
-                ),
-                {
-                  type: "bar",
-
-                  data: {
-                    labels: [
-                      "Opened",
-                      "In Development",
-                      "QA Testing",
-                      "QA Passed",
-                      "Closed"
-                    ],
-
-                    datasets: [{
-                      label: "Issues",
-                      data: []
-                    }]
-                  },
-
-                  options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                  }
-                }
-              );
-
-
-            const mixChart =
-              new Chart(
-                document.getElementById(
-                  "mixChart"
-                ),
-                {
-                  type: "doughnut",
-
-                  data: {
-                    labels: [
-                      "Bugs",
-                      "Enhancements"
-                    ],
-
-                    datasets: [{
-                      data: []
-                    }]
-                  },
-
-                  options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                  }
-                }
-              );
-
-
-            const bugChart =
-              new Chart(
-                document.getElementById(
-                  "bugChart"
-                ),
-                {
-                  type: "bar",
-
-                  data: {
-                    labels: data.priorities,
-
-                    datasets: [
-                      {
-                        label: "Created",
-                        data: []
-                      },
-                      {
-                        label: "Resolved",
-                        data: []
-                      }
-                    ]
-                  },
-
-                  options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                  }
-                }
-              );
-
-
-            const trendChart =
-              new Chart(
-                document.getElementById(
-                  "trendChart"
-                ),
-                {
-                  type: "line",
-
-                  data: {
-                    labels:
-                      data.sprints.map(
-                        sprint => sprint.name
-                      ),
-
-                    datasets: [
-                      {
-                        label: "Opened",
-
-                        data:
-                          data.sprints.map(
-                            sprint =>
-                              metrics(sprint).opened
-                          )
-                      },
-                      {
-                        label: "Closed",
-
-                        data:
-                          data.sprints.map(
-                            sprint =>
-                              metrics(sprint).closed
-                          )
-                      }
-                    ]
-                  },
-
-                  options: {
-                    responsive: true,
-                    maintainAspectRatio: false
-                  }
-                }
-              );
-
-
-            function update(index) {
-
-              const sprint =
-                data.sprints[index];
-
-              const total =
-                metrics(sprint);
-
-
-              document.getElementById(
-                "opened"
-              ).textContent =
-                total.opened;
-
-              document.getElementById(
-                "dev"
-              ).textContent =
-                total.development;
-
-              document.getElementById(
-                "qa"
-              ).textContent =
-                total.testing;
-
-              document.getElementById(
-                "passed"
-              ).textContent =
-                total.passed;
-
-              document.getElementById(
-                "closed"
-              ).textContent =
-                total.closed;
-
-
-              flowChart
-                .data
-                .datasets[0]
-                .data = [
-                  total.opened,
-                  total.development,
-                  total.testing,
-                  total.passed,
-                  total.closed
-                ];
-
-              flowChart.update();
-
-
-              // --------------------------------------------
-              // Work Mix
-              //
-              // Worked on =
-              // In Development OR QA Testing OR
-              // QA Passed OR Closed in this sprint.
-              //
-              // Each issue counts once.
-              // --------------------------------------------
-
-              const worked = new Set();
-
-              data.issues.forEach(issue => {
-
-                const id =
-                  issue.repository
-                  + "#"
-                  + issue.number;
-
-
-                if (
-                  within(issue.closed, sprint)
-                ) {
-                  worked.add(id);
-                }
-
-
-                issue.events.forEach(event => {
-                  if (
-                    within(event.date, sprint)
-                  ) {
-                    worked.add(id);
-                  }
-                });
-              });
-
-
-              let bugs = 0;
-              let enhancements = 0;
-
-
-              data.issues.forEach(issue => {
-
-                const id =
-                  issue.repository
-                  + "#"
-                  + issue.number;
-
-
-                if (!worked.has(id)) {
-                  return;
-                }
-
-
-                if (isBug(issue)) {
-                  bugs++;
-                }
-
-
-                if (isEnhancement(issue)) {
-                  enhancements++;
-                }
-              });
-
-
-              mixChart
-                .data
-                .datasets[0]
-                .data = [
-                  bugs,
-                  enhancements
-                ];
-
-              mixChart.update();
-
-
-              const priorityMetrics =
-                data.priorities.map(
-                  priority =>
-                    metrics(
-                      sprint,
-                      priority
-                    )
-                );
-
-
-              bugChart
-                .data
-                .datasets[0]
-                .data =
-                  priorityMetrics.map(
-                    x => x.bugOpened
-                  );
-
-
-              bugChart
-                .data
-                .datasets[1]
-                .data =
-                  priorityMetrics.map(
-                    x => x.bugClosed
-                  );
-
-              bugChart.update();
-
-
-              const tbody =
-                document.getElementById(
-                  "rows"
-                );
-
-              tbody.innerHTML = "";
-
-
-              data.priorities.forEach(
-                (priority,index) => {
-
-                  const m =
-                    priorityMetrics[index];
-
-
-                  const ratio =
-                    m.bugClosed === 0
-                    ? "—"
-                    : (
-                        m.bugOpened
-                        /
-                        m.bugClosed
-                      ).toFixed(2)
-                      + "x";
-
-
-                  const row =
-                    document.createElement(
-                      "tr"
-                    );
-
-
-                  row.innerHTML = `
-                    <td>
-                      <strong>${priority}</strong>
-                    </td>
-
-                    <td>${m.opened}</td>
-
-                    <td>
-                      ${m.development}
-                    </td>
-
-                    <td>${m.testing}</td>
-
-                    <td>${m.passed}</td>
-
-                    <td>${m.closed}</td>
-
-                    <td>
-                      ${m.bugOpened}
-                    </td>
-
-                    <td>
-                      ${m.bugClosed}
-                    </td>
-
-                    <td>${ratio}</td>
-                  `;
-
-
-                  tbody.appendChild(row);
-                }
-              );
-            }
-
-
-            sprintSelect.addEventListener(
-              "change",
-              event => {
-                update(
-                  Number(event.target.value)
-                );
-              }
-            );
-
-
-            sprintSelect.value =
-              data.sprints.length - 1;
-
-            update(
-              data.sprints.length - 1
-            );
-          }
-
-          EOF
-
-      # ------------------------------------------------------
-      # Homepage: auto-generated project picker
-      # ------------------------------------------------------
-
-      - name: Create project index
-        run: |
-          cat > dashboard/index.html <<'EOF'
-          ---
-          layout: null
-          ---
-
+          cat > site/index.html <<'EOF'
           <!doctype html>
           <html lang="en">
 
@@ -1644,12 +541,27 @@ jobs:
               Engineering Dashboards
             </title>
 
+            <script
+              src="https://cdn.jsdelivr.net/npm/chart.js">
+            </script>
+
             <style>
+              :root {
+                --bg: #f5f7fb;
+                --card: #fff;
+                --border: #e4e8ef;
+                --text: #172033;
+                --muted: #697386;
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
               body {
                 margin: 0;
-                background: #f5f7fb;
-                color: #172033;
-
+                background: var(--bg);
+                color: var(--text);
                 font-family:
                   Inter,
                   system-ui,
@@ -1660,61 +572,98 @@ jobs:
               }
 
               main {
-                max-width: 1050px;
+                max-width: 1450px;
                 margin: auto;
-                padding: 60px 30px;
+                padding: 32px;
               }
 
               h1 {
-                margin-bottom: 5px;
+                margin: 0 0 4px;
               }
 
-              .subtitle {
-                color: #697386;
-                margin-bottom: 30px;
+              .muted {
+                color: var(--muted);
               }
 
-              .projects {
-                display: grid;
-
-                grid-template-columns:
-                  repeat(
-                    auto-fill,
-                    minmax(280px,1fr)
-                  );
-
-                gap: 16px;
+              .toolbar {
+                display: flex;
+                gap: 12px;
+                margin: 24px 0;
               }
 
-              .project {
-                display: block;
-                padding: 20px;
+              select {
+                padding: 10px 14px;
                 background: white;
-                border: 1px solid #e4e8ef;
+                border: 1px solid var(--border);
+                border-radius: 8px;
+              }
+
+              .kpis {
+                display: grid;
+                grid-template-columns:
+                  repeat(5,1fr);
+                gap: 15px;
+                margin-bottom: 18px;
+              }
+
+              .card {
+                background: var(--card);
+                border: 1px solid var(--border);
                 border-radius: 14px;
-                text-decoration: none;
-                color: inherit;
+                padding: 18px;
               }
 
-              .project:hover {
-                border-color: #2563eb;
+              .label {
+                font-size: 11px;
+                text-transform: uppercase;
+                color: var(--muted);
+                font-weight: 700;
               }
 
-              .project h2 {
-                margin: 0 0 7px;
-                font-size: 17px;
+              .number {
+                font-size: 30px;
+                font-weight: 750;
+                margin-top: 6px;
               }
 
-              .description {
-                color: #697386;
-                min-height: 38px;
-                font-size: 13px;
+              .grid {
+                display: grid;
+                grid-template-columns: 2fr 1fr;
+                gap: 18px;
+                margin-bottom: 18px;
               }
 
-              .meta {
-                margin-top: 16px;
-                color: #697386;
-                font-size: 12px;
+              .chart {
+                height: 330px;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+
+              th,
+              td {
+                padding: 11px;
+                border-bottom:
+                  1px solid #eef1f5;
+                text-align: right;
+              }
+
+              th:first-child,
+              td:first-child {
+                text-align: left;
+              }
+
+              @media(max-width:900px) {
+                .kpis {
+                  grid-template-columns:
+                    1fr 1fr;
+                }
+
+                .grid {
+                  grid-template-columns: 1fr;
+                }
               }
             </style>
           </head>
@@ -1727,101 +676,673 @@ jobs:
                 Engineering Dashboards
               </h1>
 
-              <div class="subtitle">
-                Delivery metrics by GitHub Project
+              <div class="muted">
+                Real GitHub Project data
               </div>
 
-              <div
-                class="projects"
-                id="projects">
+              <div class="toolbar">
+
+                <select id="projectSelect"></select>
+
+                <select id="sprintSelect"></select>
+
               </div>
+
+              <section class="kpis">
+
+                <div class="card">
+                  <div class="label">Opened</div>
+                  <div
+                    class="number"
+                    id="opened">
+                    -
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="label">
+                    In Development
+                  </div>
+                  <div
+                    class="number"
+                    id="development">
+                    -
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="label">
+                    QA Testing
+                  </div>
+                  <div
+                    class="number"
+                    id="qa">
+                    -
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="label">
+                    QA Passed
+                  </div>
+                  <div
+                    class="number"
+                    id="passed">
+                    -
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="label">Closed</div>
+                  <div
+                    class="number"
+                    id="closed">
+                    -
+                  </div>
+                </div>
+
+              </section>
+
+
+              <div class="grid">
+
+                <section class="card">
+
+                  <h3>Sprint Flow</h3>
+
+                  <div class="chart">
+                    <canvas id="flowChart"></canvas>
+                  </div>
+
+                </section>
+
+
+                <section class="card">
+
+                  <h3>
+                    Bugs vs Enhancements
+                  </h3>
+
+                  <div class="chart">
+                    <canvas id="mixChart"></canvas>
+                  </div>
+
+                </section>
+
+              </div>
+
+
+              <section class="card">
+
+                <h3>Flow by Priority</h3>
+
+                <table>
+
+                  <thead>
+                    <tr>
+                      <th>Priority</th>
+                      <th>Opened</th>
+                      <th>In Dev</th>
+                      <th>QA</th>
+                      <th>QA Passed</th>
+                      <th>Closed</th>
+                      <th>Bug Opened</th>
+                      <th>Bug Closed</th>
+                      <th>Bug C/R</th>
+                    </tr>
+                  </thead>
+
+                  <tbody id="rows"></tbody>
+
+                </table>
+
+              </section>
 
             </main>
 
 
             <script>
+
+              let projectData = null;
+
+
+              function within(date,sprint) {
+                return (
+                  date
+                  &&
+                  date >= sprint.start
+                  &&
+                  date <= sprint.end
+                );
+              }
+
+
+              function isBug(issue) {
+                return (
+                  (issue.issueType || "")
+                  .toLowerCase()
+                  === "bug"
+                );
+              }
+
+
+              function isEnhancement(issue) {
+                return (
+                  (issue.issueType || "")
+                  .toLowerCase()
+                  === "enhancement"
+                );
+              }
+
+
+              function uniqueStatus(
+                issues,
+                status,
+                sprint
+              ) {
+
+                const result = new Set();
+
+                issues.forEach(issue => {
+
+                  issue.events.forEach(event => {
+
+                    if (
+                      event.status === status
+                      &&
+                      within(
+                        event.date,
+                        sprint
+                      )
+                    ) {
+
+                      result.add(
+                        issue.repository
+                        + "#"
+                        + issue.number
+                      );
+
+                    }
+
+                  });
+
+                });
+
+                return result.size;
+              }
+
+
+              function calculate(
+                sprint,
+                priority = null
+              ) {
+
+                const issues =
+                  projectData.issues.filter(
+                    issue =>
+                      !priority
+                      ||
+                      issue.priority === priority
+                  );
+
+
+                const opened =
+                  issues.filter(issue =>
+                    within(
+                      issue.opened,
+                      sprint
+                    )
+                  );
+
+
+                const closed =
+                  issues.filter(issue =>
+                    within(
+                      issue.closed,
+                      sprint
+                    )
+                  );
+
+
+                return {
+                  opened: opened.length,
+
+                  development:
+                    uniqueStatus(
+                      issues,
+                      "In Development",
+                      sprint
+                    ),
+
+                  qa:
+                    uniqueStatus(
+                      issues,
+                      "QA Testing",
+                      sprint
+                    ),
+
+                  passed:
+                    uniqueStatus(
+                      issues,
+                      "QA Passed",
+                      sprint
+                    ),
+
+                  closed: closed.length,
+
+                  bugOpened:
+                    opened.filter(
+                      isBug
+                    ).length,
+
+                  bugClosed:
+                    closed.filter(
+                      isBug
+                    ).length
+                };
+              }
+
+
+              const flowChart =
+                new Chart(
+                  document.getElementById(
+                    "flowChart"
+                  ),
+                  {
+                    type: "bar",
+
+                    data: {
+                      labels: [
+                        "Opened",
+                        "In Development",
+                        "QA Testing",
+                        "QA Passed",
+                        "Closed"
+                      ],
+
+                      datasets: [{
+                        label: "Issues",
+                        data: []
+                      }]
+                    },
+
+                    options: {
+                      responsive: true,
+                      maintainAspectRatio: false
+                    }
+                  }
+                );
+
+
+              const mixChart =
+                new Chart(
+                  document.getElementById(
+                    "mixChart"
+                  ),
+                  {
+                    type: "doughnut",
+
+                    data: {
+                      labels: [
+                        "Bugs",
+                        "Enhancements"
+                      ],
+
+                      datasets: [{
+                        data: []
+                      }]
+                    },
+
+                    options: {
+                      responsive: true,
+                      maintainAspectRatio: false
+                    }
+                  }
+                );
+
+
+              function updateSprint() {
+
+                if (!projectData) {
+                  return;
+                }
+
+
+                const sprintIndex =
+                  Number(
+                    document
+                    .getElementById(
+                      "sprintSelect"
+                    )
+                    .value
+                  );
+
+
+                const sprint =
+                  projectData
+                  .sprints[
+                    sprintIndex
+                  ];
+
+
+                if (!sprint) {
+                  return;
+                }
+
+
+                const total =
+                  calculate(sprint);
+
+
+                opened.textContent =
+                  total.opened;
+
+                development.textContent =
+                  total.development;
+
+                qa.textContent =
+                  total.qa;
+
+                passed.textContent =
+                  total.passed;
+
+                closed.textContent =
+                  total.closed;
+
+
+                flowChart
+                  .data
+                  .datasets[0]
+                  .data = [
+                    total.opened,
+                    total.development,
+                    total.qa,
+                    total.passed,
+                    total.closed
+                  ];
+
+                flowChart.update();
+
+
+                const worked =
+                  new Set();
+
+
+                projectData
+                  .issues
+                  .forEach(issue => {
+
+                    const id =
+                      issue.repository
+                      + "#"
+                      + issue.number;
+
+
+                    if (
+                      within(
+                        issue.closed,
+                        sprint
+                      )
+                    ) {
+                      worked.add(id);
+                    }
+
+
+                    issue.events.forEach(event => {
+
+                      if (
+                        within(
+                          event.date,
+                          sprint
+                        )
+                      ) {
+                        worked.add(id);
+                      }
+
+                    });
+
+                  });
+
+
+                let bugs = 0;
+                let enhancements = 0;
+
+
+                projectData
+                  .issues
+                  .forEach(issue => {
+
+                    const id =
+                      issue.repository
+                      + "#"
+                      + issue.number;
+
+
+                    if (!worked.has(id)) {
+                      return;
+                    }
+
+
+                    if (isBug(issue)) {
+                      bugs++;
+                    }
+
+                    if (
+                      isEnhancement(issue)
+                    ) {
+                      enhancements++;
+                    }
+
+                  });
+
+
+                mixChart
+                  .data
+                  .datasets[0]
+                  .data = [
+                    bugs,
+                    enhancements
+                  ];
+
+                mixChart.update();
+
+
+                const tbody =
+                  document.getElementById(
+                    "rows"
+                  );
+
+                tbody.innerHTML = "";
+
+
+                projectData
+                  .priorities
+                  .forEach(priority => {
+
+                    const m =
+                      calculate(
+                        sprint,
+                        priority
+                      );
+
+
+                    const ratio =
+                      m.bugClosed === 0
+                      ? "—"
+                      : (
+                          m.bugOpened
+                          /
+                          m.bugClosed
+                        ).toFixed(2)
+                        + "x";
+
+
+                    const row =
+                      document.createElement(
+                        "tr"
+                      );
+
+
+                    row.innerHTML = `
+                      <td>
+                        <strong>
+                          ${priority}
+                        </strong>
+                      </td>
+
+                      <td>${m.opened}</td>
+                      <td>${m.development}</td>
+                      <td>${m.qa}</td>
+                      <td>${m.passed}</td>
+                      <td>${m.closed}</td>
+                      <td>${m.bugOpened}</td>
+                      <td>${m.bugClosed}</td>
+                      <td>${ratio}</td>
+                    `;
+
+
+                    tbody.appendChild(row);
+
+                  });
+
+              }
+
+
+              function loadProject(project) {
+
+                fetch(
+                  `data/${project.slug}.json`
+                )
+                .then(r => r.json())
+                .then(data => {
+
+                  projectData = data;
+
+
+                  const sprintSelect =
+                    document.getElementById(
+                      "sprintSelect"
+                    );
+
+
+                  sprintSelect.innerHTML = "";
+
+
+                  data.sprints.forEach(
+                    (sprint,index) => {
+
+                      const option =
+                        document.createElement(
+                          "option"
+                        );
+
+
+                      option.value = index;
+
+                      option.textContent =
+                        `${sprint.name} · ` +
+                        `${sprint.start} – ` +
+                        `${sprint.end}`;
+
+
+                      sprintSelect.appendChild(
+                        option
+                      );
+
+                    }
+                  );
+
+
+                  sprintSelect.value =
+                    Math.max(
+                      data.sprints.length - 1,
+                      0
+                    );
+
+
+                  updateSprint();
+
+                });
+
+              }
+
+
               fetch("data/projects.json")
               .then(r => r.json())
               .then(projects => {
 
-                const container =
+                const select =
                   document.getElementById(
-                    "projects"
+                    "projectSelect"
                   );
 
 
-                projects.forEach(project => {
+                projects.forEach(
+                  (project,index) => {
 
-                  const link =
-                    document.createElement(
-                      "a"
+                    const option =
+                      document.createElement(
+                        "option"
+                      );
+
+
+                    option.value = index;
+
+                    option.textContent =
+                      `${project.title} ` +
+                      `(${project.issueCount} issues)`;
+
+
+                    select.appendChild(
+                      option
                     );
 
-                  link.className =
-                    "project";
-
-                  link.href =
-                    `projects/${project.slug}/`;
+                  }
+                );
 
 
-                  link.innerHTML = `
-
-                    <h2>
-                      ${project.title}
-                    </h2>
-
-                    <div class="description">
-                      ${
-                        project.description
-                        ||
-                        "GitHub Project"
-                      }
-                    </div>
-
-                    <div class="meta">
-                      Project ${project.number}
-                      ·
-                      ${project.issueCount} issues
-                      ·
-                      ${project.sprintCount} sprints
-                    </div>
-
-                  `;
+                if (projects.length) {
+                  loadProject(projects[0]);
+                }
 
 
-                  container.appendChild(link);
-                });
+                select.addEventListener(
+                  "change",
+                  event => {
+
+                    loadProject(
+                      projects[
+                        Number(
+                          event.target.value
+                        )
+                      ]
+                    );
+
+                  }
+                );
+
               });
+
+
+              document
+                .getElementById(
+                  "sprintSelect"
+                )
+                .addEventListener(
+                  "change",
+                  updateSprint
+                );
+
             </script>
 
           </body>
           </html>
           EOF
 
-      # ------------------------------------------------------
-      # Jekyll config
-      # ------------------------------------------------------
-
-      - name: Create Jekyll config
-        run: |
-          cat > dashboard/_config.yml <<'EOF'
-          title: Engineering Dashboards
-          EOF
-
-      # ------------------------------------------------------
-      # Build / deploy
-      # ------------------------------------------------------
-
-      - name: Build Pages
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./dashboard
-          destination: ./_site
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./_site
+          path: ./site
 
   deploy:
     environment:

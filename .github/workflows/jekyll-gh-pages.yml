@@ -28,7 +28,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
-          private-key: ${{ secrets.ACTIONS_PRIVATE_KEY }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
       - name: Configure Pages

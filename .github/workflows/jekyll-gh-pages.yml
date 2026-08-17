@@ -63,7 +63,6 @@ jobs:
               "QA Passed",
           }
 
-
           def graphql(query, variables=None):
               variables = variables or {}
 
@@ -92,11 +91,6 @@ jobs:
               )
 
               return json.loads(result.stdout)
-
-
-          # ==================================================
-          # Discover open Project V2 projects
-          # ==================================================
 
           PROJECTS_QUERY = """
           query($org: String!) {
@@ -132,11 +126,6 @@ jobs:
 
           print(f"Found {len(projects)} open projects")
 
-
-          # ==================================================
-          # Project + Issue data
-          # ==================================================
-
           PROJECT_QUERY = """
           query(
             $org: String!,
@@ -145,7 +134,6 @@ jobs:
           ) {
             organization(login: $org) {
               projectV2(number: $number) {
-
                 number
                 title
                 shortDescription
@@ -153,7 +141,6 @@ jobs:
 
                 fields(first: 100) {
                   nodes {
-
                     ... on ProjectV2IterationField {
                       name
 
@@ -186,7 +173,6 @@ jobs:
                   nodes {
                     fieldValues(first: 50) {
                       nodes {
-
                         ... on ProjectV2ItemFieldSingleSelectValue {
                           name
 
@@ -230,7 +216,6 @@ jobs:
 
                         issueFieldValues(first: 30) {
                           nodes {
-
                             ... on IssueFieldSingleSelectValue {
                               name
 
@@ -250,11 +235,6 @@ jobs:
             }
           }
           """
-
-
-          # ==================================================
-          # Workflow history
-          # ==================================================
 
           TIMELINE_QUERY = """
           query(
@@ -286,9 +266,7 @@ jobs:
           }
           """
 
-
           def issue_priority(issue, item):
-              # Prefer issue custom field.
               for value in (
                   issue
                   .get("issueFieldValues", {})
@@ -302,7 +280,6 @@ jobs:
                           or "Unspecified"
                       )
 
-              # Fall back to Project field.
               for value in (
                   item
                   .get("fieldValues", {})
@@ -317,7 +294,6 @@ jobs:
                       )
 
               return "Unspecified"
-
 
           def load_project(project):
               cursor = None
@@ -352,7 +328,6 @@ jobs:
                           "url": pv2["url"],
                       }
 
-                      # Detect iteration configuration.
                       for field in pv2["fields"]["nodes"]:
                           if not field.get("configuration"):
                               continue
@@ -437,10 +412,6 @@ jobs:
 
                   cursor = connection["pageInfo"]["endCursor"]
 
-              # ==============================================
-              # Load timeline/status events
-              # ==============================================
-
               for index, issue in enumerate(issues, 1):
                   print(
                       f'Project {project["number"]}: '
@@ -502,7 +473,6 @@ jobs:
                   "issues": issues,
               }
 
-
           output_projects = []
 
           for project in projects:
@@ -540,19 +510,7 @@ jobs:
               )
           )
 
-          print(
-              json.dumps(
-                  output_projects,
-                  indent=2,
-              )
-          )
-
           PY
-
-
-      # ======================================================
-      # Dashboard
-      # ======================================================
 
       - name: Create dashboard page
         run: |
@@ -568,13 +526,9 @@ jobs:
               content="width=device-width,initial-scale=1"
             >
 
-            <title>
-              Engineering Dashboards
-            </title>
+            <title>Engineering Dashboards</title>
 
-            <script
-              src="https://cdn.jsdelivr.net/npm/chart.js">
-            </script>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
             <style>
               :root {
@@ -584,10 +538,6 @@ jobs:
                 --text: #172033;
                 --muted: #697386;
                 --blue: #2563eb;
-                --green: #16a34a;
-                --orange: #ea580c;
-                --red: #dc2626;
-                --purple: #7c3aed;
               }
 
               * {
@@ -598,7 +548,6 @@ jobs:
                 margin: 0;
                 background: var(--bg);
                 color: var(--text);
-
                 font-family:
                   Inter,
                   system-ui,
@@ -656,17 +605,21 @@ jobs:
 
               .clickable {
                 cursor: pointer;
-                transition:
-                  transform .12s ease,
-                  box-shadow .12s ease,
-                  background .12s ease;
+              }
+
+              .clickable::after {
+                content: "View issues";
+                display: block;
+                margin-top: 8px;
+                font-size: 11px;
+                color: var(--blue);
+                font-weight: 600;
               }
 
               .clickable:hover {
                 background: #fafcff;
                 box-shadow:
                   0 4px 15px rgba(0,0,0,.06);
-                transform: translateY(-1px);
               }
 
               .label {
@@ -714,6 +667,9 @@ jobs:
               .metric-cell {
                 cursor: pointer;
                 font-weight: 600;
+                text-decoration: underline;
+                text-decoration-style: dotted;
+                text-underline-offset: 3px;
               }
 
               .metric-cell:hover {
@@ -721,22 +677,14 @@ jobs:
                 color: var(--blue);
               }
 
-              /* ============================================
-                 Drilldown
-                 ============================================ */
-
               .modal-backdrop {
                 position: fixed;
                 inset: 0;
                 z-index: 1000;
-
-                background:
-                  rgba(15,23,42,.48);
-
+                background: rgba(15,23,42,.48);
                 display: flex;
                 justify-content: center;
                 align-items: center;
-
                 padding: 28px;
               }
 
@@ -747,30 +695,20 @@ jobs:
               .modal {
                 width: min(1200px,96vw);
                 max-height: 88vh;
-
                 background: white;
                 border-radius: 16px;
-
-                box-shadow:
-                  0 30px 80px
-                  rgba(0,0,0,.25);
-
                 overflow: hidden;
+                box-shadow:
+                  0 30px 80px rgba(0,0,0,.25);
               }
 
               .modal-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
-
                 padding: 20px 24px;
-
                 border-bottom:
                   1px solid var(--border);
-              }
-
-              .modal-title {
-                margin: 0 0 4px;
               }
 
               .modal-body {
@@ -782,19 +720,13 @@ jobs:
               .close-button {
                 border: 0;
                 background: transparent;
-
                 font-size: 30px;
-                line-height: 1;
-
                 cursor: pointer;
-
-                color: var(--muted);
               }
 
               .issue-link {
                 color: var(--blue);
                 text-decoration: none;
-                white-space: nowrap;
               }
 
               .issue-link:hover {
@@ -803,11 +735,6 @@ jobs:
 
               .issue-title {
                 text-align: left;
-              }
-
-              .drilldown-count {
-                color: var(--muted);
-                font-size: 13px;
               }
 
               .empty-state {
@@ -825,14 +752,6 @@ jobs:
                 .grid {
                   grid-template-columns: 1fr;
                 }
-
-                main {
-                  padding: 18px;
-                }
-
-                .modal-backdrop {
-                  padding: 8px;
-                }
               }
             </style>
           </head>
@@ -841,26 +760,16 @@ jobs:
 
             <main>
 
-              <h1>
-                Engineering Dashboards
-              </h1>
+              <h1>Engineering Dashboards</h1>
 
               <div class="muted">
                 Real GitHub Project data
               </div>
 
               <div class="toolbar">
-
                 <select id="projectSelect"></select>
-
                 <select id="sprintSelect"></select>
-
               </div>
-
-
-              <!-- ===========================================
-                   KPI cards
-                   =========================================== -->
 
               <section class="kpis">
 
@@ -868,18 +777,10 @@ jobs:
                   class="card clickable"
                   id="openedCard">
 
-                  <div class="label">
-                    Opened
-                  </div>
-
-                  <div
-                    class="number"
-                    id="opened">
-                    -
-                  </div>
+                  <div class="label">Opened</div>
+                  <div class="number" id="opened">-</div>
 
                 </div>
-
 
                 <div
                   class="card clickable"
@@ -897,7 +798,6 @@ jobs:
 
                 </div>
 
-
                 <div
                   class="card clickable"
                   id="qaCard">
@@ -913,7 +813,6 @@ jobs:
                   </div>
 
                 </div>
-
 
                 <div
                   class="card clickable"
@@ -931,14 +830,11 @@ jobs:
 
                 </div>
 
-
                 <div
                   class="card clickable"
                   id="closedCard">
 
-                  <div class="label">
-                    Closed
-                  </div>
+                  <div class="label">Closed</div>
 
                   <div
                     class="number"
@@ -951,20 +847,14 @@ jobs:
               </section>
 
 
-              <!-- ===========================================
-                   Charts
-                   =========================================== -->
-
               <div class="grid">
 
                 <section class="card">
 
-                  <h3>
-                    Sprint Flow
-                  </h3>
+                  <h3>Sprint Flow</h3>
 
                   <div class="muted">
-                    Click a bar to view the issues
+                    Click a bar to view issues
                   </div>
 
                   <div class="chart">
@@ -981,7 +871,7 @@ jobs:
                   </h3>
 
                   <div class="muted">
-                    Unique issues worked on this sprint
+                    Click a segment to view issues
                   </div>
 
                   <div class="chart">
@@ -993,18 +883,12 @@ jobs:
               </div>
 
 
-              <!-- ===========================================
-                   Priority table
-                   =========================================== -->
-
               <section class="card">
 
-                <h3>
-                  Flow by Priority
-                </h3>
+                <h3>Flow by Priority</h3>
 
                 <div class="muted">
-                  Click any count to view the underlying issues
+                  Click a count to view issues
                 </div>
 
                 <table>
@@ -1032,10 +916,6 @@ jobs:
             </main>
 
 
-            <!-- =============================================
-                 Drilldown modal
-                 ============================================= -->
-
             <div
               id="drilldownBackdrop"
               class="modal-backdrop hidden">
@@ -1045,27 +925,22 @@ jobs:
                 <div class="modal-header">
 
                   <div>
-                    <h2
-                      id="drilldownTitle"
-                      class="modal-title">
-                    </h2>
+                    <h2 id="drilldownTitle"></h2>
 
                     <div
                       id="drilldownSubtitle"
-                      class="drilldown-count">
+                      class="muted">
                     </div>
                   </div>
 
                   <button
                     id="closeDrilldown"
                     class="close-button"
-                    type="button"
-                    aria-label="Close">
+                    type="button">
                     ×
                   </button>
 
                 </div>
-
 
                 <div class="modal-body">
 
@@ -1091,7 +966,9 @@ jobs:
                     id="drilldownEmpty"
                     class="empty-state"
                     style="display:none">
+
                     No matching issues.
+
                   </div>
 
                 </div>
@@ -1105,10 +982,6 @@ jobs:
 
               let projectData = null;
 
-
-              // =============================================
-              // General helpers
-              // =============================================
 
               function within(date,sprint) {
 
@@ -1191,10 +1064,6 @@ jobs:
               }
 
 
-              // =============================================
-              // Status count
-              // =============================================
-
               function uniqueStatus(
                 issues,
                 status,
@@ -1227,12 +1096,9 @@ jobs:
                 });
 
                 return result.size;
+
               }
 
-
-              // =============================================
-              // Metrics
-              // =============================================
 
               function calculate(
                 sprint,
@@ -1309,10 +1175,6 @@ jobs:
 
               }
 
-
-              // =============================================
-              // Get issues behind a metric
-              // =============================================
 
               function matchingIssues(
                 sprint,
@@ -1426,15 +1288,6 @@ jobs:
                 }
 
 
-                /*
-                  The KPI counts unique issues,
-                  so the drilldown must do the same.
-
-                  If an issue entered QA twice during
-                  the sprint, show it only once and
-                  use the earliest matching date.
-                */
-
                 const matches =
                   new Map();
 
@@ -1480,10 +1333,6 @@ jobs:
 
               }
 
-
-              // =============================================
-              // Worked-on issue list for Work Mix
-              // =============================================
 
               function workedIssues(
                 sprint,
@@ -1567,7 +1416,7 @@ jobs:
                   })
                   .map(issue => {
 
-                    const eventDates =
+                    const dates =
                       issue.events
                       .filter(event =>
                         within(
@@ -1587,22 +1436,20 @@ jobs:
                       )
                     ) {
 
-                      eventDates.push(
+                      dates.push(
                         issue.closed
                       );
 
                     }
 
 
-                    eventDates.sort();
+                    dates.sort();
 
 
                     return {
                       ...issue,
-
                       metricDate:
-                        eventDates[0]
-                        || ""
+                        dates[0] || ""
                     };
 
                   });
@@ -1610,15 +1457,19 @@ jobs:
               }
 
 
-              // =============================================
-              // Drilldown modal
-              // =============================================
-
               function openDrilldown(
                 title,
                 sprint,
                 issues
               ) {
+
+                console.log(
+                  "Opening drilldown:",
+                  title,
+                  sprint,
+                  issues
+                );
+
 
                 document
                   .getElementById(
@@ -1664,75 +1515,64 @@ jobs:
                     "none";
 
 
-                  issues
-                    .sort((a,b) => {
+                  issues.forEach(issue => {
 
-                      return (
-                        (a.metricDate || "")
-                        .localeCompare(
-                          b.metricDate || ""
-                        )
-                      );
-
-                    })
-                    .forEach(issue => {
-
-                      const row =
-                        document
-                        .createElement("tr");
+                    const row =
+                      document
+                      .createElement("tr");
 
 
-                      row.innerHTML = `
+                    row.innerHTML = `
 
-                        <td>
+                      <td>
 
-                          <a
-                            class="issue-link"
-                            href="${escapeHtml(issue.url)}"
-                            target="_blank"
-                            rel="noopener noreferrer">
+                        <a
+                          class="issue-link"
+                          href="${escapeHtml(issue.url)}"
+                          target="_blank"
+                          rel="noopener noreferrer">
 
-                            ${escapeHtml(
-                              issue.repository
-                            )}#${escapeHtml(
-                              issue.number
-                            )}
-
-                          </a>
-
-                        </td>
-
-                        <td class="issue-title">
                           ${escapeHtml(
-                            issue.title
+                            issue.repository
+                          )}#${escapeHtml(
+                            issue.number
                           )}
-                        </td>
 
-                        <td>
-                          ${escapeHtml(
-                            issue.priority
-                          )}
-                        </td>
+                        </a>
 
-                        <td>
-                          ${escapeHtml(
-                            issue.issueType
-                          )}
-                        </td>
+                      </td>
 
-                        <td>
-                          ${escapeHtml(
-                            issue.metricDate
-                            || ""
-                          )}
-                        </td>
+                      <td class="issue-title">
+                        ${escapeHtml(
+                          issue.title
+                        )}
+                      </td>
 
-                      `;
+                      <td>
+                        ${escapeHtml(
+                          issue.priority
+                        )}
+                      </td>
+
+                      <td>
+                        ${escapeHtml(
+                          issue.issueType
+                        )}
+                      </td>
+
+                      <td>
+                        ${escapeHtml(
+                          issue.metricDate
+                          || ""
+                        )}
+                      </td>
+
+                    `;
 
 
-                      tbody.appendChild(row);
+                    tbody.appendChild(row);
 
-                    });
+                  });
 
                 }
 
@@ -1806,10 +1646,6 @@ jobs:
                   }
                 );
 
-
-              // =============================================
-              // Charts
-              // =============================================
 
               const flowMetrics = [
                 "opened",
@@ -1964,10 +1800,6 @@ jobs:
                 );
 
 
-              // =============================================
-              // Render selected sprint
-              // =============================================
-
               function updateSprint() {
 
                 if (!projectData) {
@@ -1989,9 +1821,7 @@ jobs:
 
 
                 document
-                  .getElementById(
-                    "opened"
-                  )
+                  .getElementById("opened")
                   .textContent =
                     total.opened;
 
@@ -2005,30 +1835,22 @@ jobs:
 
 
                 document
-                  .getElementById(
-                    "qa"
-                  )
+                  .getElementById("qa")
                   .textContent =
                     total.qa;
 
 
                 document
-                  .getElementById(
-                    "passed"
-                  )
+                  .getElementById("passed")
                   .textContent =
                     total.passed;
 
 
                 document
-                  .getElementById(
-                    "closed"
-                  )
+                  .getElementById("closed")
                   .textContent =
                     total.closed;
 
-
-                // KPI drilldowns
 
                 document
                   .getElementById(
@@ -2110,8 +1932,6 @@ jobs:
                     );
 
 
-                // Flow chart
-
                 flowChart
                   .data
                   .datasets[0]
@@ -2128,8 +1948,6 @@ jobs:
 
                 flowChart.update();
 
-
-                // Work mix
 
                 const bugs =
                   workedIssues(
@@ -2158,8 +1976,6 @@ jobs:
 
                 mixChart.update();
 
-
-                // Priority table
 
                 const tbody =
                   document.getElementById(
@@ -2324,10 +2140,6 @@ jobs:
               }
 
 
-              // =============================================
-              // Load project
-              // =============================================
-
               function loadProject(project) {
 
                 fetch(
@@ -2391,10 +2203,6 @@ jobs:
 
               }
 
-
-              // =============================================
-              // Project selector
-              // =============================================
 
               fetch("data/projects.json")
               .then(r => r.json())
@@ -2475,12 +2283,10 @@ jobs:
           </html>
           EOF
 
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
-
 
   deploy:
     environment:

@@ -1,0 +1,972 @@
+name: Deploy Engineering Dashboard
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Create Jekyll dashboard
+        run: |
+          mkdir -p dashboard
+
+          cat > dashboard/_config.yml <<'EOF'
+          title: Engineering Delivery Dashboard
+          description: Sprint delivery, QA flow, bug resolution and work mix
+          baseurl: ""
+          url: ""
+          exclude:
+            - README.md
+          EOF
+
+          cat > dashboard/index.html <<'EOF'
+          ---
+          layout: null
+          title: Engineering Delivery Dashboard
+          ---
+
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+            <title>Engineering Delivery Dashboard</title>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+            <style>
+              :root {
+                --bg: #f5f7fb;
+                --panel: #ffffff;
+                --border: #e5e9f0;
+                --text: #172033;
+                --muted: #697386;
+                --blue: #2563eb;
+                --green: #16a34a;
+                --purple: #7c3aed;
+                --orange: #ea580c;
+                --red: #dc2626;
+                --cyan: #0891b2;
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font-family:
+                  Inter,
+                  ui-sans-serif,
+                  system-ui,
+                  -apple-system,
+                  BlinkMacSystemFont,
+                  "Segoe UI",
+                  sans-serif;
+              }
+
+              .shell {
+                max-width: 1500px;
+                margin: auto;
+                padding: 30px;
+              }
+
+              header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 24px;
+                margin-bottom: 28px;
+              }
+
+              h1 {
+                margin: 0 0 6px;
+                font-size: 30px;
+                letter-spacing: -0.03em;
+              }
+
+              .subtitle {
+                color: var(--muted);
+                font-size: 14px;
+              }
+
+              .project-pill {
+                display: inline-flex;
+                align-items: center;
+                padding: 8px 12px;
+                border: 1px solid var(--border);
+                background: white;
+                border-radius: 10px;
+                font-size: 13px;
+                font-weight: 600;
+              }
+
+              .toolbar {
+                display: flex;
+                gap: 12px;
+                align-items: center;
+                margin-bottom: 22px;
+              }
+
+              select {
+                padding: 10px 36px 10px 12px;
+                border-radius: 9px;
+                border: 1px solid var(--border);
+                background: white;
+                color: var(--text);
+                font-size: 14px;
+              }
+
+              .updated {
+                color: var(--muted);
+                font-size: 12px;
+              }
+
+              .kpis {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(150px, 1fr));
+                gap: 16px;
+                margin-bottom: 18px;
+              }
+
+              .card {
+                background: var(--panel);
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 18px;
+                box-shadow: 0 1px 2px rgba(0,0,0,.03);
+              }
+
+              .kpi-label {
+                color: var(--muted);
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+                margin-bottom: 8px;
+              }
+
+              .kpi-value {
+                font-size: 30px;
+                font-weight: 750;
+                letter-spacing: -0.04em;
+              }
+
+              .kpi-foot {
+                margin-top: 5px;
+                font-size: 12px;
+                color: var(--muted);
+              }
+
+              .good {
+                color: var(--green);
+              }
+
+              .bad {
+                color: var(--red);
+              }
+
+              .grid {
+                display: grid;
+                grid-template-columns: 2fr 1fr;
+                gap: 18px;
+                margin-bottom: 18px;
+              }
+
+              .grid-half {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 18px;
+                margin-bottom: 18px;
+              }
+
+              .panel-title {
+                font-size: 15px;
+                font-weight: 700;
+                margin-bottom: 3px;
+              }
+
+              .panel-subtitle {
+                color: var(--muted);
+                font-size: 12px;
+                margin-bottom: 18px;
+              }
+
+              .chart-wrap {
+                height: 330px;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 13px;
+              }
+
+              th {
+                color: var(--muted);
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+                text-align: right;
+                border-bottom: 1px solid var(--border);
+                padding: 11px 10px;
+              }
+
+              th:first-child,
+              td:first-child {
+                text-align: left;
+              }
+
+              td {
+                text-align: right;
+                border-bottom: 1px solid #f0f2f6;
+                padding: 13px 10px;
+              }
+
+              tbody tr:last-child td {
+                border-bottom: none;
+              }
+
+              .priority {
+                display: inline-block;
+                min-width: 34px;
+                text-align: center;
+                border-radius: 6px;
+                padding: 4px 7px;
+                font-weight: 700;
+                font-size: 11px;
+                background: #eef2ff;
+                color: #4338ca;
+              }
+
+              .critical {
+                background: #fee2e2;
+                color: #b91c1c;
+              }
+
+              .ratio {
+                font-weight: 700;
+              }
+
+              .footer-note {
+                color: var(--muted);
+                font-size: 11px;
+                line-height: 1.6;
+                margin-top: 15px;
+              }
+
+              @media (max-width: 1000px) {
+                .kpis {
+                  grid-template-columns: repeat(2, 1fr);
+                }
+
+                .grid,
+                .grid-half {
+                  grid-template-columns: 1fr;
+                }
+              }
+
+              @media (max-width: 600px) {
+                .shell {
+                  padding: 18px;
+                }
+
+                header {
+                  flex-direction: column;
+                }
+
+                .kpis {
+                  grid-template-columns: 1fr;
+                }
+              }
+            </style>
+          </head>
+
+          <body>
+            <div class="shell">
+
+              <header>
+                <div>
+                  <h1>Engineering Delivery Dashboard</h1>
+                  <div class="subtitle">
+                    Sprint throughput, QA flow, bugs and delivery mix
+                  </div>
+                </div>
+
+                <div class="project-pill">
+                  daw-systems · Project 5
+                </div>
+              </header>
+
+              <div class="toolbar">
+                <select id="sprintSelect"></select>
+
+                <span class="updated">
+                  Mock dashboard · representative data
+                </span>
+              </div>
+
+              <section class="kpis">
+                <div class="card">
+                  <div class="kpi-label">Opened</div>
+                  <div class="kpi-value" id="openedKpi">—</div>
+                  <div class="kpi-foot">New issues created</div>
+                </div>
+
+                <div class="card">
+                  <div class="kpi-label">Closed</div>
+                  <div class="kpi-value" id="closedKpi">—</div>
+                  <div class="kpi-foot" id="closeDelta">Resolved this sprint</div>
+                </div>
+
+                <div class="card">
+                  <div class="kpi-label">In Development</div>
+                  <div class="kpi-value" id="devKpi">—</div>
+                  <div class="kpi-foot">Entered development</div>
+                </div>
+
+                <div class="card">
+                  <div class="kpi-label">QA Passed</div>
+                  <div class="kpi-value" id="qaPassedKpi">—</div>
+                  <div class="kpi-foot">Passed QA</div>
+                </div>
+
+                <div class="card">
+                  <div class="kpi-label">Bug C/R Ratio</div>
+                  <div class="kpi-value" id="bugRatioKpi">—</div>
+                  <div class="kpi-foot">
+                    Created / resolved
+                  </div>
+                </div>
+              </section>
+
+              <div class="grid">
+                <section class="card">
+                  <div class="panel-title">Sprint Flow</div>
+                  <div class="panel-subtitle">
+                    Issue activity across the engineering workflow
+                  </div>
+
+                  <div class="chart-wrap">
+                    <canvas id="flowChart"></canvas>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="panel-title">Work Mix</div>
+                  <div class="panel-subtitle">
+                    Unique issues worked on during selected sprint
+                  </div>
+
+                  <div class="chart-wrap">
+                    <canvas id="mixChart"></canvas>
+                  </div>
+                </section>
+              </div>
+
+              <div class="grid-half">
+                <section class="card">
+                  <div class="panel-title">Bug Creation vs Resolution</div>
+                  <div class="panel-subtitle">
+                    Are we resolving bugs as quickly as they are being created?
+                  </div>
+
+                  <div class="chart-wrap">
+                    <canvas id="bugChart"></canvas>
+                  </div>
+                </section>
+
+                <section class="card">
+                  <div class="panel-title">Sprint Trend</div>
+                  <div class="panel-subtitle">
+                    Opened versus closed across recent sprints
+                  </div>
+
+                  <div class="chart-wrap">
+                    <canvas id="trendChart"></canvas>
+                  </div>
+                </section>
+              </div>
+
+              <section class="card">
+                <div class="panel-title">Flow by Priority</div>
+                <div class="panel-subtitle" id="tableSubtitle"></div>
+
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Priority</th>
+                      <th>Opened</th>
+                      <th>In Development</th>
+                      <th>QA Testing</th>
+                      <th>QA Passed</th>
+                      <th>Closed</th>
+                      <th>Bug Opened</th>
+                      <th>Bug Closed</th>
+                      <th>Bug C/R</th>
+                    </tr>
+                  </thead>
+
+                  <tbody id="priorityTable"></tbody>
+                </table>
+
+                <div class="footer-note">
+                  “Worked on” means an issue entered In Development,
+                  QA Testing, QA Passed, or was closed during the sprint.
+                  A bug created/resolved ratio above 1.00 means bugs were
+                  created faster than they were resolved.
+                </div>
+              </section>
+
+            </div>
+
+            <script>
+              const sprintData = [
+                {
+                  sprint: "Sprint 187",
+                  start: "Jun 8",
+                  end: "Jun 14",
+                  priorities: {
+                    "PROD Critical": [1, 1, 1, 1, 1, 1, 1],
+                    "P1": [8, 10, 7, 6, 7, 4, 5],
+                    "P2": [11, 9, 8, 7, 8, 5, 5],
+                    "P3": [5, 4, 3, 2, 3, 3, 2],
+                    "P4": [1, 1, 0, 0, 0, 1, 0]
+                  },
+                  bugsWorked: 14,
+                  enhancementsWorked: 23
+                },
+
+                {
+                  sprint: "Sprint 188",
+                  start: "Jun 15",
+                  end: "Jun 21",
+                  priorities: {
+                    "PROD Critical": [0, 1, 1, 1, 1, 0, 1],
+                    "P1": [9, 11, 9, 7, 8, 5, 6],
+                    "P2": [13, 12, 9, 8, 9, 7, 6],
+                    "P3": [4, 5, 4, 3, 3, 2, 2],
+                    "P4": [1, 0, 1, 0, 0, 0, 0]
+                  },
+                  bugsWorked: 16,
+                  enhancementsWorked: 27
+                },
+
+                {
+                  sprint: "Sprint 189",
+                  start: "Jun 22",
+                  end: "Jun 28",
+                  priorities: {
+                    "PROD Critical": [1, 1, 1, 1, 1, 1, 1],
+                    "P1": [12, 13, 10, 8, 10, 7, 7],
+                    "P2": [15, 14, 11, 10, 11, 8, 7],
+                    "P3": [6, 5, 4, 4, 4, 3, 2],
+                    "P4": [0, 1, 0, 0, 0, 0, 0]
+                  },
+                  bugsWorked: 19,
+                  enhancementsWorked: 31
+                },
+
+                {
+                  sprint: "Sprint 190",
+                  start: "Jun 29",
+                  end: "Jul 5",
+                  priorities: {
+                    "PROD Critical": [2, 2, 2, 2, 2, 1, 2],
+                    "P1": [10, 12, 11, 9, 9, 6, 7],
+                    "P2": [12, 14, 12, 10, 10, 7, 6],
+                    "P3": [5, 6, 5, 4, 4, 3, 3],
+                    "P4": [1, 1, 1, 0, 1, 0, 1]
+                  },
+                  bugsWorked: 18,
+                  enhancementsWorked: 29
+                },
+
+                {
+                  sprint: "Sprint 191",
+                  start: "Jul 6",
+                  end: "Jul 12",
+                  priorities: {
+                    "PROD Critical": [1, 2, 2, 1, 2, 1, 2],
+                    "P1": [13, 14, 12, 10, 11, 8, 9],
+                    "P2": [16, 15, 13, 11, 12, 9, 8],
+                    "P3": [7, 6, 5, 5, 5, 3, 3],
+                    "P4": [1, 1, 0, 0, 0, 0, 0]
+                  },
+                  bugsWorked: 22,
+                  enhancementsWorked: 34
+                },
+
+                {
+                  sprint: "Sprint 192",
+                  start: "Jul 13",
+                  end: "Jul 19",
+                  priorities: {
+                    "PROD Critical": [1, 1, 1, 1, 1, 1, 1],
+                    "P1": [11, 13, 11, 10, 10, 7, 8],
+                    "P2": [14, 13, 12, 9, 11, 8, 7],
+                    "P3": [6, 5, 5, 4, 4, 3, 2],
+                    "P4": [0, 1, 0, 0, 0, 0, 0]
+                  },
+                  bugsWorked: 20,
+                  enhancementsWorked: 30
+                },
+
+                {
+                  sprint: "Sprint 193",
+                  start: "Jul 20",
+                  end: "Jul 26",
+                  priorities: {
+                    "PROD Critical": [2, 2, 2, 2, 2, 2, 2],
+                    "P1": [14, 15, 13, 11, 12, 8, 10],
+                    "P2": [18, 17, 15, 13, 14, 10, 9],
+                    "P3": [8, 7, 6, 5, 6, 4, 3],
+                    "P4": [1, 1, 1, 1, 1, 0, 1]
+                  },
+                  bugsWorked: 25,
+                  enhancementsWorked: 38
+                },
+
+                {
+                  sprint: "Sprint 194",
+                  start: "Jul 27",
+                  end: "Aug 2",
+                  priorities: {
+                    "PROD Critical": [1, 1, 1, 1, 1, 1, 1],
+                    "P1": [12, 14, 12, 11, 11, 7, 9],
+                    "P2": [16, 16, 14, 12, 13, 9, 8],
+                    "P3": [7, 6, 6, 5, 5, 3, 3],
+                    "P4": [0, 1, 0, 0, 0, 0, 0]
+                  },
+                  bugsWorked: 21,
+                  enhancementsWorked: 35
+                },
+
+                {
+                  sprint: "Sprint 195",
+                  start: "Aug 3",
+                  end: "Aug 9",
+                  priorities: {
+                    "PROD Critical": [2, 2, 2, 2, 2, 1, 2],
+                    "P1": [15, 16, 14, 12, 13, 9, 11],
+                    "P2": [19, 18, 16, 14, 15, 11, 10],
+                    "P3": [9, 8, 7, 6, 6, 4, 4],
+                    "P4": [1, 1, 1, 0, 1, 0, 1]
+                  },
+                  bugsWorked: 28,
+                  enhancementsWorked: 41
+                },
+
+                {
+                  sprint: "Sprint 196",
+                  start: "Aug 10",
+                  end: "Aug 16",
+                  priorities: {
+                    "PROD Critical": [1, 2, 2, 2, 2, 1, 2],
+                    "P1": [13, 15, 14, 12, 13, 8, 10],
+                    "P2": [17, 17, 15, 13, 14, 10, 9],
+                    "P3": [8, 7, 6, 6, 6, 4, 3],
+                    "P4": [1, 1, 1, 1, 1, 0, 1]
+                  },
+                  bugsWorked: 24,
+                  enhancementsWorked: 39
+                }
+              ];
+
+              /*
+                Array positions per priority:
+
+                0 = Opened
+                1 = In Development
+                2 = QA Testing
+                3 = QA Passed
+                4 = Closed
+                5 = Bugs Opened
+                6 = Bugs Closed
+              */
+
+              const sprintSelect =
+                document.getElementById("sprintSelect");
+
+              sprintData.forEach((sprint, index) => {
+                const option = document.createElement("option");
+
+                option.value = index;
+                option.textContent =
+                  `${sprint.sprint} · ${sprint.start}–${sprint.end}`;
+
+                sprintSelect.appendChild(option);
+              });
+
+              sprintSelect.value = sprintData.length - 1;
+
+              function totals(sprint) {
+                const result = Array(7).fill(0);
+
+                Object.values(sprint.priorities).forEach(row => {
+                  row.forEach((value, index) => {
+                    result[index] += value;
+                  });
+                });
+
+                return result;
+              }
+
+              const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: "bottom",
+                    labels: {
+                      usePointStyle: true,
+                      boxWidth: 8
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: {
+                      color: "#eef1f5"
+                    }
+                  },
+                  x: {
+                    grid: {
+                      display: false
+                    }
+                  }
+                }
+              };
+
+              const flowChart =
+                new Chart(
+                  document.getElementById("flowChart"),
+                  {
+                    type: "bar",
+                    data: {
+                      labels: [
+                        "Opened",
+                        "In Development",
+                        "QA Testing",
+                        "QA Passed",
+                        "Closed"
+                      ],
+                      datasets: [{
+                        label: "Issues",
+                        data: [],
+                        backgroundColor: [
+                          "#2563eb",
+                          "#7c3aed",
+                          "#ea580c",
+                          "#16a34a",
+                          "#0891b2"
+                        ],
+                        borderRadius: 6
+                      }]
+                    },
+                    options: {
+                      ...commonOptions,
+                      plugins: {
+                        legend: {
+                          display: false
+                        }
+                      }
+                    }
+                  }
+                );
+
+              const mixChart =
+                new Chart(
+                  document.getElementById("mixChart"),
+                  {
+                    type: "doughnut",
+                    data: {
+                      labels: [
+                        "Bugs",
+                        "Enhancements"
+                      ],
+                      datasets: [{
+                        data: [],
+                        backgroundColor: [
+                          "#dc2626",
+                          "#2563eb"
+                        ],
+                        borderWidth: 0
+                      }]
+                    },
+                    options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      cutout: "68%",
+                      plugins: {
+                        legend: {
+                          position: "bottom"
+                        }
+                      }
+                    }
+                  }
+                );
+
+              const bugChart =
+                new Chart(
+                  document.getElementById("bugChart"),
+                  {
+                    type: "bar",
+                    data: {
+                      labels: [
+                        "PROD Critical",
+                        "P1",
+                        "P2",
+                        "P3",
+                        "P4"
+                      ],
+                      datasets: [
+                        {
+                          label: "Created",
+                          data: [],
+                          backgroundColor: "#dc2626",
+                          borderRadius: 5
+                        },
+                        {
+                          label: "Resolved",
+                          data: [],
+                          backgroundColor: "#16a34a",
+                          borderRadius: 5
+                        }
+                      ]
+                    },
+                    options: commonOptions
+                  }
+                );
+
+              const trendChart =
+                new Chart(
+                  document.getElementById("trendChart"),
+                  {
+                    type: "line",
+                    data: {
+                      labels:
+                        sprintData.map(x =>
+                          x.sprint.replace("Sprint ", "")
+                        ),
+
+                      datasets: [
+                        {
+                          label: "Opened",
+                          data:
+                            sprintData.map(x =>
+                              totals(x)[0]
+                            ),
+                          borderColor: "#2563eb",
+                          backgroundColor: "#2563eb",
+                          tension: .3
+                        },
+                        {
+                          label: "Closed",
+                          data:
+                            sprintData.map(x =>
+                              totals(x)[4]
+                            ),
+                          borderColor: "#16a34a",
+                          backgroundColor: "#16a34a",
+                          tension: .3
+                        }
+                      ]
+                    },
+                    options: commonOptions
+                  }
+                );
+
+              function updateDashboard(index) {
+                const sprint = sprintData[index];
+                const t = totals(sprint);
+
+                document.getElementById("openedKpi")
+                  .textContent = t[0];
+
+                document.getElementById("closedKpi")
+                  .textContent = t[4];
+
+                document.getElementById("devKpi")
+                  .textContent = t[1];
+
+                document.getElementById("qaPassedKpi")
+                  .textContent = t[3];
+
+                const bugRatio =
+                  t[6] === 0
+                    ? null
+                    : t[5] / t[6];
+
+                const ratioElement =
+                  document.getElementById("bugRatioKpi");
+
+                ratioElement.textContent =
+                  bugRatio === null
+                    ? "—"
+                    : bugRatio.toFixed(2) + "x";
+
+                ratioElement.className =
+                  "kpi-value " +
+                  (
+                    bugRatio !== null && bugRatio <= 1
+                      ? "good"
+                      : "bad"
+                  );
+
+                const closeDelta =
+                  document.getElementById("closeDelta");
+
+                const difference = t[4] - t[0];
+
+                if (difference >= 0) {
+                  closeDelta.textContent =
+                    `Closed ${difference} more than opened`;
+                  closeDelta.className = "kpi-foot good";
+                } else {
+                  closeDelta.textContent =
+                    `Opened ${Math.abs(difference)} more than closed`;
+                  closeDelta.className = "kpi-foot bad";
+                }
+
+                flowChart.data.datasets[0].data =
+                  t.slice(0, 5);
+
+                flowChart.update();
+
+                mixChart.data.datasets[0].data = [
+                  sprint.bugsWorked,
+                  sprint.enhancementsWorked
+                ];
+
+                mixChart.update();
+
+                const priorityNames = [
+                  "PROD Critical",
+                  "P1",
+                  "P2",
+                  "P3",
+                  "P4"
+                ];
+
+                bugChart.data.datasets[0].data =
+                  priorityNames.map(
+                    p => sprint.priorities[p][5]
+                  );
+
+                bugChart.data.datasets[1].data =
+                  priorityNames.map(
+                    p => sprint.priorities[p][6]
+                  );
+
+                bugChart.update();
+
+                document.getElementById("tableSubtitle")
+                  .textContent =
+                    `${sprint.sprint} · ${sprint.start}–${sprint.end}`;
+
+                const body =
+                  document.getElementById("priorityTable");
+
+                body.innerHTML = "";
+
+                priorityNames.forEach(priority => {
+                  const row = sprint.priorities[priority];
+
+                  const ratio =
+                    row[6] === 0
+                      ? "—"
+                      : (row[5] / row[6]).toFixed(2) + "x";
+
+                  const tr = document.createElement("tr");
+
+                  const priorityClass =
+                    priority === "PROD Critical"
+                      ? "priority critical"
+                      : "priority";
+
+                  tr.innerHTML = `
+                    <td>
+                      <span class="${priorityClass}">
+                        ${priority}
+                      </span>
+                    </td>
+                    <td>${row[0]}</td>
+                    <td>${row[1]}</td>
+                    <td>${row[2]}</td>
+                    <td>${row[3]}</td>
+                    <td>${row[4]}</td>
+                    <td>${row[5]}</td>
+                    <td>${row[6]}</td>
+                    <td class="ratio">${ratio}</td>
+                  `;
+
+                  body.appendChild(tr);
+                });
+              }
+
+              sprintSelect.addEventListener(
+                "change",
+                event => {
+                  updateDashboard(
+                    Number(event.target.value)
+                  );
+                }
+              );
+
+              updateDashboard(
+                sprintData.length - 1
+              );
+            </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./dashboard
+          destination: ./_site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

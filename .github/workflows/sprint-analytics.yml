@@ -624,7 +624,8 @@ jobs:
 
                   if any(
                       issue["priority"]
-                      == priority
+                      ==
+                      priority
                       for issue in issues
                   ):
                       actual_priorities.append(
@@ -663,7 +664,8 @@ jobs:
 
               if any(
                   issue["priority"]
-                  == "Unspecified"
+                  ==
+                  "Unspecified"
                   for issue in issues
               ):
                   actual_priorities.append(
@@ -805,7 +807,8 @@ jobs:
                 --muted: #5f6b7a;
 
                 --border: #d7e0e7;
-                --page-bg: #177fc4;
+
+                --page-bg: #f4f6f8;
                 --card: #ffffff;
               }
 
@@ -860,10 +863,6 @@ jobs:
                 background:
                   var(--blue-deep);
 
-                border-bottom:
-                  5px solid
-                  var(--green);
-
                 font-size:
                   30px;
 
@@ -902,6 +901,15 @@ jobs:
 
                 background:
                   var(--blue-deep);
+
+                border-top:
+                  1px solid
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .12
+                  );
               }
 
 
@@ -936,10 +944,10 @@ jobs:
               select:focus {
                 outline:
                   3px solid
-                  var(--green-light);
+                  var(--blue-light);
 
                 border-color:
-                  var(--green);
+                  var(--blue);
               }
 
 
@@ -977,12 +985,7 @@ jobs:
 
                 border:
                   1px solid
-                  rgba(
-                    255,
-                    255,
-                    255,
-                    .35
-                  );
+                  var(--border);
 
                 border-radius:
                   14px;
@@ -991,12 +994,12 @@ jobs:
                   18px;
 
                 box-shadow:
-                  0 4px 14px
+                  0 3px 10px
                   rgba(
-                    15,
-                    95,
-                    152,
-                    .16
+                    23,
+                    32,
+                    51,
+                    .08
                   );
               }
 
@@ -1004,7 +1007,7 @@ jobs:
               .kpis .card {
                 border-top:
                   4px solid
-                  var(--green);
+                  var(--blue);
               }
 
 
@@ -1028,7 +1031,7 @@ jobs:
                     0,
                     0,
                     0,
-                    .18
+                    .14
                   );
               }
 
@@ -1100,12 +1103,7 @@ jobs:
 
                 border:
                   1px solid
-                  rgba(
-                    255,
-                    255,
-                    255,
-                    .55
-                  );
+                  var(--border);
 
                 border-radius:
                   999px;
@@ -1126,12 +1124,12 @@ jobs:
                   pointer;
 
                 box-shadow:
-                  0 2px 6px
+                  0 2px 5px
                   rgba(
                     0,
                     0,
                     0,
-                    .08
+                    .06
                   );
               }
 
@@ -1147,10 +1145,10 @@ jobs:
 
               .status-chip:hover {
                 background:
-                  var(--green-light);
+                  var(--blue-light);
 
                 border-color:
-                  var(--green);
+                  var(--blue);
               }
 
 
@@ -1173,17 +1171,10 @@ jobs:
               }
 
 
-              .grid .card:first-child {
+              .grid .card {
                 border-top:
                   4px solid
                   var(--blue);
-              }
-
-
-              .grid .card:nth-child(2) {
-                border-top:
-                  4px solid
-                  var(--green);
               }
 
 
@@ -1283,10 +1274,10 @@ jobs:
 
               .metric-cell:hover {
                 background:
-                  var(--green-light);
+                  var(--blue-light);
 
                 color:
-                  var(--green-dark);
+                  var(--blue-deep);
               }
 
 
@@ -1380,10 +1371,6 @@ jobs:
 
                 background:
                   var(--blue-deep);
-
-                border-bottom:
-                  4px solid
-                  var(--green);
               }
 
 
@@ -1492,9 +1479,6 @@ jobs:
 
 
               .issue-link:hover {
-                color:
-                  var(--green-dark);
-
                 text-decoration:
                   underline;
               }
@@ -1502,12 +1486,12 @@ jobs:
 
               .highlight {
                 background:
-                  var(--green-light)
+                  var(--blue-light)
                   !important;
 
                 box-shadow:
                   inset 3px 0 0
-                  var(--green);
+                  var(--blue);
               }
 
 

@@ -274,6 +274,10 @@ jobs:
                       createdAt
                       previousStatus
                       status
+
+                      project {
+                        number
+                      }
                     }
                   }
                 }
@@ -317,7 +321,10 @@ jobs:
           history_cache = {}
 
 
-          def get_issue_history(repository, number):
+          def get_issue_history(
+              repository,
+              number,
+          ):
 
               cache_key = (
                   f"{repository}#{number}"
@@ -371,7 +378,8 @@ jobs:
                       PROJECT_QUERY,
                       {
                           "org": ORG,
-                          "number": project["number"],
+                          "number":
+                              project["number"],
                           "cursor": cursor,
                       },
                   )
@@ -407,7 +415,9 @@ jobs:
                           pv2["fields"]["nodes"]
                       ):
 
-                          name = field.get("name")
+                          name = (
+                              field.get("name")
+                          )
 
                           if name == "Status":
 
@@ -491,20 +501,31 @@ jobs:
 
                   connection = pv2["items"]
 
-                  for item in connection["nodes"]:
+                  for item in connection[
+                      "nodes"
+                  ]:
 
-                      issue = item.get("content")
+                      issue = (
+                          item.get("content")
+                      )
 
                       if not issue:
                           continue
 
-                      if not issue.get("number"):
+                      if not issue.get(
+                          "number"
+                      ):
                           continue
 
                       repository = (
                           issue
-                          .get("repository", {})
-                          .get("nameWithOwner")
+                          .get(
+                              "repository",
+                              {},
+                          )
+                          .get(
+                              "nameWithOwner"
+                          )
                       )
 
                       if not repository:
@@ -512,7 +533,9 @@ jobs:
 
                       issue_type = (
                           (
-                              issue.get("issueType")
+                              issue.get(
+                                  "issueType"
+                              )
                               or {}
                           )
                           .get("name")
@@ -542,12 +565,18 @@ jobs:
                               issue_type,
 
                           "opened":
-                              issue["createdAt"][:10],
+                              issue[
+                                  "createdAt"
+                              ][:10],
 
                           "closed":
                               (
-                                  issue["closedAt"][:10]
-                                  if issue["closedAt"]
+                                  issue[
+                                      "closedAt"
+                                  ][:10]
+                                  if issue[
+                                      "closedAt"
+                                  ]
                                   else None
                               ),
 
@@ -562,12 +591,22 @@ jobs:
                   ]:
                       break
 
-                  cursor = connection[
-                      "pageInfo"
-                  ][
-                      "endCursor"
-                  ]
+                  cursor = (
+                      connection[
+                          "pageInfo"
+                      ][
+                          "endCursor"
+                      ]
+                  )
 
+
+              # ==========================================
+              # Status history
+              #
+              # IMPORTANT:
+              # Only keep status events belonging to
+              # THIS project.
+              # ==========================================
 
               for index, issue in enumerate(
                   issues,
@@ -575,7 +614,8 @@ jobs:
               ):
 
                   print(
-                      f'Project {project["number"]}: '
+                      f'Project '
+                      f'{project["number"]}: '
                       f'[{index}/{len(issues)}] '
                       f'{issue["repository"]}'
                       f'#{issue["number"]}'
@@ -590,14 +630,42 @@ jobs:
 
                       for event in nodes:
 
+                          event_project = (
+                              event.get(
+                                  "project"
+                              )
+                              or {}
+                          )
+
+                          event_project_number = (
+                              event_project.get(
+                                  "number"
+                              )
+                          )
+
+                          # Critical project isolation:
+                          # ignore status changes that
+                          # happened in another project.
+
+                          if (
+                              event_project_number
+                              !=
+                              project["number"]
+                          ):
+                              continue
+
                           status = (
-                              event.get("status")
+                              event.get(
+                                  "status"
+                              )
                           )
 
                           if not status:
                               continue
 
-                          issue["events"].append({
+                          issue[
+                              "events"
+                          ].append({
                               "status":
                                   status,
 
@@ -620,7 +688,9 @@ jobs:
               actual_priorities = []
 
 
-              for priority in DEFAULT_PRIORITIES:
+              for priority in (
+                  DEFAULT_PRIORITIES
+              ):
 
                   if any(
                       issue["priority"]
@@ -633,11 +703,14 @@ jobs:
                       )
 
 
-              for priority in project_priorities:
+              for priority in (
+                  project_priorities
+              ):
 
                   if (
                       priority
-                      not in actual_priorities
+                      not in
+                      actual_priorities
                   ):
                       actual_priorities.append(
                           priority
@@ -649,10 +722,12 @@ jobs:
                   for issue in issues
                   if (
                       issue["priority"]
-                      not in actual_priorities
+                      not in
+                      actual_priorities
                       and
                       issue["priority"]
-                      != "Unspecified"
+                      !=
+                      "Unspecified"
                   )
               })
 
@@ -668,6 +743,7 @@ jobs:
                   "Unspecified"
                   for issue in issues
               ):
+
                   actual_priorities.append(
                       "Unspecified"
                   )
@@ -762,6 +838,14 @@ jobs:
               )
           )
 
+
+          print(
+              json.dumps(
+                  output_projects,
+                  indent=2,
+              )
+          )
+
           PY
 
 
@@ -781,6 +865,21 @@ jobs:
               content="width=device-width,initial-scale=1"
             >
 
+            <meta
+              http-equiv="Cache-Control"
+              content="no-cache, no-store, must-revalidate"
+            >
+
+            <meta
+              http-equiv="Pragma"
+              content="no-cache"
+            >
+
+            <meta
+              http-equiv="Expires"
+              content="0"
+            >
+
             <title>
               Sprint Analytics
             </title>
@@ -788,7 +887,6 @@ jobs:
             <script
               src="https://cdn.jsdelivr.net/npm/chart.js">
             </script>
-
 
             <style>
 
@@ -805,6 +903,7 @@ jobs:
                 --muted: #5f6b7a;
 
                 --border: #d7e0e7;
+
                 --page-bg: #f4f6f8;
                 --card: #ffffff;
               }
@@ -820,7 +919,6 @@ jobs:
               body {
                 width: 100%;
                 min-height: 100%;
-
                 margin: 0;
               }
 
@@ -858,10 +956,6 @@ jobs:
                   0 32px 40px;
               }
 
-
-              /* ==========================================
-                 Header
-                 ========================================== */
 
               h1 {
                 margin:
@@ -901,10 +995,6 @@ jobs:
                   var(--muted);
               }
 
-
-              /* ==========================================
-                 Filters
-                 ========================================== */
 
               .toolbar {
                 display:
@@ -971,10 +1061,6 @@ jobs:
                   var(--blue);
               }
 
-
-              /* ==========================================
-                 KPI cards
-                 ========================================== */
 
               .kpis {
                 display:
@@ -1104,10 +1190,6 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Secondary statuses
-                 ========================================== */
-
               .secondary-statuses {
                 display:
                   flex;
@@ -1196,10 +1278,6 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Charts
-                 ========================================== */
-
               .grid {
                 display:
                   grid;
@@ -1273,10 +1351,6 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Priority table
-                 ========================================== */
-
               .table-wrap {
                 width:
                   100%;
@@ -1286,9 +1360,6 @@ jobs:
 
                 overflow-x:
                   auto;
-
-                -webkit-overflow-scrolling:
-                  touch;
               }
 
 
@@ -1378,10 +1449,6 @@ jobs:
                   var(--blue-deep);
               }
 
-
-              /* ==========================================
-                 Drilldown
-                 ========================================== */
 
               .modal-backdrop {
                 position:
@@ -1501,9 +1568,6 @@ jobs:
 
                 overflow:
                   auto;
-
-                -webkit-overflow-scrolling:
-                  touch;
               }
 
 
@@ -1622,10 +1686,6 @@ jobs:
                   var(--muted);
               }
 
-
-              /* ==========================================
-                 Responsive
-                 ========================================== */
 
               @media(
                 max-width: 900px
@@ -1877,6 +1937,10 @@ jobs:
                 null;
 
 
+              const cacheVersion =
+                Date.now();
+
+
               function within(
                 date,
                 sprint
@@ -1885,11 +1949,9 @@ jobs:
                 return (
                   date
                   &&
-                  date >=
-                    sprint.start
+                  date >= sprint.start
                   &&
-                  date <=
-                    sprint.end
+                  date <= sprint.end
                 );
 
               }
@@ -2421,15 +2483,10 @@ jobs:
                       card.onclick =
                         () =>
                           openDrilldown(
-
                             item.label,
-
                             sprint,
-
                             item.issues,
-
                             item.highlight
-
                           );
 
 
@@ -2506,15 +2563,10 @@ jobs:
                       chip.onclick =
                         () =>
                           openDrilldown(
-
                             item.status,
-
                             sprint,
-
                             item.issues,
-
                             item.status
-
                           );
 
 
@@ -2611,15 +2663,10 @@ jobs:
 
 
                           openDrilldown(
-
                             descriptor.label,
-
                             sprint,
-
                             descriptor.issues(),
-
                             descriptor.highlight
-
                           );
 
                         }
@@ -2811,8 +2858,7 @@ jobs:
 
                           openDrilldown(
 
-                            type ===
-                            "bug"
+                            type === "bug"
                             ?
                             "Bugs Worked On"
                             :
@@ -3176,9 +3222,7 @@ jobs:
                     `${sprint.name} · ` +
                     `${issues.length} issue` +
                     `${
-                      issues.length
-                      ===
-                      1
+                      issues.length === 1
                       ?
                       ""
                       :
@@ -3632,7 +3676,11 @@ jobs:
               ) {
 
                 fetch(
-                  `data/${project.slug}.json`
+                  `data/${project.slug}.json?v=${cacheVersion}`,
+                  {
+                    cache:
+                      "no-store"
+                  }
                 )
 
                 .then(
@@ -3736,7 +3784,11 @@ jobs:
 
 
               fetch(
-                "data/projects.json"
+                `data/projects.json?v=${cacheVersion}`,
+                {
+                  cache:
+                    "no-store"
+                }
               )
 
               .then(
@@ -3827,14 +3879,6 @@ jobs:
                 );
 
 
-              /*
-                Explicit resize handling.
-
-                Chart.js already listens for resize,
-                but this makes the layout settle first
-                before recalculating the canvas dimensions.
-              */
-
               let resizeTimer =
                 null;
 
@@ -3876,14 +3920,21 @@ jobs:
           echo "Checking generated dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
-          grep -q "statusKpis" site/index.html
-          grep -q "secondaryStatuses" site/index.html
           grep -q "projectData.statuses" site/index.html
           grep -q "Open Date" site/index.html
           grep -q "Close Date" site/index.html
-          grep -q "resizeDelay" site/index.html
+          grep -q "event_project_number" site/index.html || true
 
-          echo "Sprint Analytics dashboard verified."
+          echo "Dashboard HTML verified."
+
+          echo
+          echo "Checking generated project data..."
+
+          ls -la site/data
+
+          echo
+          echo "Projects:"
+          cat site/data/projects.json
 
 
       - name: Upload Pages artifact

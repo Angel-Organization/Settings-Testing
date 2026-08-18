@@ -44,7 +44,7 @@ jobs:
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
-          owner: daw-systems
+          owner: Angel-Organization
           
       - name: Query project and comment on sprint changes
         env:

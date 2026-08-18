@@ -75,10 +75,7 @@ jobs:
 
               for key, value in variables.items():
                   if value is not None:
-                      cmd += [
-                          "-F",
-                          f"{key}={value}",
-                      ]
+                      cmd += ["-F", f"{key}={value}"]
 
               result = subprocess.run(
                   cmd,
@@ -122,9 +119,7 @@ jobs:
               if not p["closed"]
           ]
 
-          print(
-              f"Found {len(projects)} open projects"
-          )
+          print(f"Found {len(projects)} open projects")
 
 
           PROJECT_QUERY = """
@@ -135,7 +130,6 @@ jobs:
           ) {
             organization(login: $org) {
               projectV2(number: $number) {
-
                 number
                 title
                 shortDescription
@@ -143,10 +137,8 @@ jobs:
 
                 fields(first: 100) {
                   nodes {
-
                     ... on ProjectV2SingleSelectField {
                       name
-
                       options {
                         name
                       }
@@ -154,7 +146,6 @@ jobs:
 
                     ... on ProjectV2IterationField {
                       name
-
                       configuration {
                         iterations {
                           title
@@ -172,10 +163,7 @@ jobs:
                   }
                 }
 
-                items(
-                  first: 100,
-                  after: $cursor
-                ) {
+                items(first: 100, after: $cursor) {
                   pageInfo {
                     hasNextPage
                     endCursor
@@ -184,7 +172,6 @@ jobs:
                   nodes {
                     fieldValues(first: 50) {
                       nodes {
-
                         ... on ProjectV2ItemFieldSingleSelectValue {
                           name
 
@@ -228,7 +215,6 @@ jobs:
 
                         issueFieldValues(first: 30) {
                           nodes {
-
                             ... on IssueFieldSingleSelectValue {
                               name
 
@@ -261,7 +247,6 @@ jobs:
               name: $repo
             ) {
               issue(number: $number) {
-
                 timelineItems(
                   first: 250,
                   itemTypes: [
@@ -269,7 +254,6 @@ jobs:
                   ]
                 ) {
                   nodes {
-
                     ... on ProjectV2ItemStatusChangedEvent {
                       createdAt
                       previousStatus
@@ -297,10 +281,7 @@ jobs:
                   field = value.get("field") or {}
 
                   if field.get("name") == "Priority":
-                      return (
-                          value.get("name")
-                          or "Unspecified"
-                      )
+                      return value.get("name") or "Unspecified"
 
               for value in (
                   item
@@ -310,10 +291,7 @@ jobs:
                   field = value.get("field") or {}
 
                   if field.get("name") == "Priority":
-                      return (
-                          value.get("name")
-                          or "Unspecified"
-                      )
+                      return value.get("name") or "Unspecified"
 
               return "Unspecified"
 
@@ -321,23 +299,14 @@ jobs:
           history_cache = {}
 
 
-          def get_issue_history(
-              repository,
-              number,
-          ):
+          def get_issue_history(repository, number):
 
-              cache_key = (
-                  f"{repository}#{number}"
-              )
+              cache_key = f"{repository}#{number}"
 
               if cache_key in history_cache:
-                  return history_cache[
-                      cache_key
-                  ]
+                  return history_cache[cache_key]
 
-              owner, repo = (
-                  repository.split("/", 1)
-              )
+              owner, repo = repository.split("/", 1)
 
               history = graphql(
                   TIMELINE_QUERY,
@@ -356,9 +325,7 @@ jobs:
                   ["nodes"]
               )
 
-              history_cache[
-                  cache_key
-              ] = nodes
+              history_cache[cache_key] = nodes
 
               return nodes
 
@@ -378,8 +345,7 @@ jobs:
                       PROJECT_QUERY,
                       {
                           "org": ORG,
-                          "number":
-                              project["number"],
+                          "number": project["number"],
                           "cursor": cursor,
                       },
                   )
@@ -393,60 +359,39 @@ jobs:
                   if metadata is None:
 
                       metadata = {
-                          "number":
-                              pv2["number"],
-
-                          "title":
-                              pv2["title"],
-
-                          "description":
-                              (
-                                  pv2.get(
-                                      "shortDescription"
-                                  )
-                                  or ""
-                              ),
-
-                          "url":
-                              pv2["url"],
+                          "number": pv2["number"],
+                          "title": pv2["title"],
+                          "description": (
+                              pv2.get("shortDescription")
+                              or ""
+                          ),
+                          "url": pv2["url"],
                       }
 
-                      for field in (
-                          pv2["fields"]["nodes"]
-                      ):
+                      for field in pv2["fields"]["nodes"]:
 
-                          name = (
-                              field.get("name")
-                          )
+                          name = field.get("name")
 
                           if name == "Status":
-
                               statuses = [
                                   option["name"]
-                                  for option in (
-                                      field.get(
-                                          "options",
-                                          []
-                                      )
+                                  for option in field.get(
+                                      "options",
+                                      [],
                                   )
                               ]
 
                           if name == "Priority":
-
                               project_priorities = [
                                   option["name"]
-                                  for option in (
-                                      field.get(
-                                          "options",
-                                          []
-                                      )
+                                  for option in field.get(
+                                      "options",
+                                      [],
                                   )
                               ]
 
-                          config = (
-                              field.get(
-                                  "configuration"
-                              )
+                          config = field.get(
+                              "configuration"
                           )
 
                           if not config:
@@ -455,77 +400,49 @@ jobs:
                           iterations = (
                               config.get(
                                   "completedIterations",
-                                  []
+                                  [],
                               )
                               +
                               config.get(
                                   "iterations",
-                                  []
+                                  [],
                               )
                           )
 
                           for sprint in iterations:
 
-                              start = (
-                                  sprint["startDate"]
-                              )
-
-                              duration = (
-                                  sprint["duration"]
-                              )
+                              start = sprint["startDate"]
+                              duration = sprint["duration"]
 
                               end = (
-                                  datetime
-                                  .fromisoformat(start)
+                                  datetime.fromisoformat(start)
                                   +
-                                  timedelta(
-                                      days=duration - 1
-                                  )
+                                  timedelta(days=duration - 1)
                               ).date().isoformat()
 
-                              sprints[
-                                  sprint["title"]
-                              ] = {
-                                  "name":
-                                      sprint["title"],
-
-                                  "start":
-                                      start,
-
-                                  "end":
-                                      end,
-
-                                  "duration":
-                                      duration,
+                              sprints[sprint["title"]] = {
+                                  "name": sprint["title"],
+                                  "start": start,
+                                  "end": end,
+                                  "duration": duration,
                               }
 
                   connection = pv2["items"]
 
-                  for item in connection[
-                      "nodes"
-                  ]:
+                  for item in connection["nodes"]:
 
-                      issue = (
-                          item.get("content")
-                      )
+                      issue = item.get("content")
 
                       if not issue:
                           continue
 
-                      if not issue.get(
-                          "number"
-                      ):
+                      if not issue.get("number"):
                           continue
 
                       repository = (
                           issue
-                          .get(
-                              "repository",
-                              {},
-                          )
-                          .get(
-                              "nameWithOwner"
-                          )
+                          .get("repository", {})
+                          .get("nameWithOwner")
                       )
 
                       if not repository:
@@ -533,9 +450,7 @@ jobs:
 
                       issue_type = (
                           (
-                              issue.get(
-                                  "issueType"
-                              )
+                              issue.get("issueType")
                               or {}
                           )
                           .get("name")
@@ -543,62 +458,42 @@ jobs:
                       )
 
                       issues.append({
-                          "number":
-                              issue["number"],
+                          "number": issue["number"],
+                          "repository": repository,
+                          "title": issue["title"],
+                          "url": issue["url"],
 
-                          "repository":
-                              repository,
+                          "priority": issue_priority(
+                              issue,
+                              item,
+                          ),
 
-                          "title":
-                              issue["title"],
+                          "issueType": issue_type,
 
-                          "url":
-                              issue["url"],
+                          "opened": issue[
+                              "createdAt"
+                          ][:10],
 
-                          "priority":
-                              issue_priority(
-                                  issue,
-                                  item,
-                              ),
+                          "closed": (
+                              issue["closedAt"][:10]
+                              if issue["closedAt"]
+                              else None
+                          ),
 
-                          "issueType":
-                              issue_type,
-
-                          "opened":
-                              issue[
-                                  "createdAt"
-                              ][:10],
-
-                          "closed":
-                              (
-                                  issue[
-                                      "closedAt"
-                                  ][:10]
-                                  if issue[
-                                      "closedAt"
-                                  ]
-                                  else None
-                              ),
-
-                          "events":
-                              [],
+                          "events": [],
                       })
 
                   if not connection[
                       "pageInfo"
-                  ][
-                      "hasNextPage"
-                  ]:
+                  ]["hasNextPage"]:
                       break
 
-                  cursor = (
-                      connection[
-                          "pageInfo"
-                      ][
-                          "endCursor"
-                      ]
-                  )
+                  cursor = connection[
+                      "pageInfo"
+                  ]["endCursor"]
 
+
+              # Load project-specific status history.
 
               for index, issue in enumerate(
                   issues,
@@ -606,8 +501,7 @@ jobs:
               ):
 
                   print(
-                      f'Project '
-                      f'{project["number"]}: '
+                      f'Project {project["number"]}: '
                       f'[{index}/{len(issues)}] '
                       f'{issue["repository"]}'
                       f'#{issue["number"]}'
@@ -623,18 +517,17 @@ jobs:
                       for event in nodes:
 
                           event_project = (
-                              event.get(
-                                  "project"
-                              )
+                              event.get("project")
                               or {}
                           )
 
                           event_project_number = (
-                              event_project.get(
-                                  "number"
-                              )
+                              event_project.get("number")
                           )
 
+                          # Do not allow a status event
+                          # from another project into
+                          # this project's analytics.
                           if (
                               event_project_number
                               !=
@@ -642,25 +535,16 @@ jobs:
                           ):
                               continue
 
-                          status = (
-                              event.get(
-                                  "status"
-                              )
-                          )
+                          status = event.get("status")
 
                           if not status:
                               continue
 
-                          issue[
-                              "events"
-                          ].append({
-                              "status":
-                                  status,
-
-                              "date":
-                                  event[
-                                      "createdAt"
-                                  ][:10],
+                          issue["events"].append({
+                              "status": status,
+                              "date": event[
+                                  "createdAt"
+                              ][:10],
                           })
 
                   except Exception as exc:
@@ -676,14 +560,10 @@ jobs:
               actual_priorities = []
 
 
-              for priority in (
-                  DEFAULT_PRIORITIES
-              ):
+              for priority in DEFAULT_PRIORITIES:
 
                   if any(
-                      issue["priority"]
-                      ==
-                      priority
+                      issue["priority"] == priority
                       for issue in issues
                   ):
                       actual_priorities.append(
@@ -691,15 +571,9 @@ jobs:
                       )
 
 
-              for priority in (
-                  project_priorities
-              ):
+              for priority in project_priorities:
 
-                  if (
-                      priority
-                      not in
-                      actual_priorities
-                  ):
+                  if priority not in actual_priorities:
                       actual_priorities.append(
                           priority
                       )
@@ -710,12 +584,10 @@ jobs:
                   for issue in issues
                   if (
                       issue["priority"]
-                      not in
-                      actual_priorities
+                      not in actual_priorities
                       and
                       issue["priority"]
-                      !=
-                      "Unspecified"
+                      != "Unspecified"
                   )
               })
 
@@ -726,36 +598,25 @@ jobs:
 
 
               if any(
-                  issue["priority"]
-                  ==
-                  "Unspecified"
+                  issue["priority"] == "Unspecified"
                   for issue in issues
               ):
-
                   actual_priorities.append(
                       "Unspecified"
                   )
 
 
               return {
-                  "project":
-                      metadata,
+                  "project": metadata,
 
-                  "sprints":
-                      sorted(
-                          sprints.values(),
-                          key=lambda x:
-                              x["start"],
-                      ),
+                  "sprints": sorted(
+                      sprints.values(),
+                      key=lambda x: x["start"],
+                  ),
 
-                  "statuses":
-                      statuses,
-
-                  "priorities":
-                      actual_priorities,
-
-                  "issues":
-                      issues,
+                  "statuses": statuses,
+                  "priorities": actual_priorities,
+                  "issues": issues,
               }
 
 
@@ -764,13 +625,10 @@ jobs:
 
           for project in projects:
 
-              data = load_project(
-                  project
-              )
+              data = load_project(project)
 
               slug = (
-                  f'project-'
-                  f'{project["number"]}'
+                  f'project-{project["number"]}'
               )
 
               Path(
@@ -783,37 +641,24 @@ jobs:
               )
 
               output_projects.append({
-                  "number":
-                      project["number"],
-
-                  "title":
-                      project["title"],
-
-                  "description":
-                      (
-                          project.get(
-                              "shortDescription"
-                          )
-                          or ""
-                      ),
-
-                  "slug":
-                      slug,
-
-                  "issueCount":
-                      len(
-                          data["issues"]
-                      ),
-
-                  "sprintCount":
-                      len(
-                          data["sprints"]
-                      ),
-
-                  "statusCount":
-                      len(
-                          data["statuses"]
-                      ),
+                  "number": project["number"],
+                  "title": project["title"],
+                  "description": (
+                      project.get(
+                          "shortDescription"
+                      )
+                      or ""
+                  ),
+                  "slug": slug,
+                  "issueCount": len(
+                      data["issues"]
+                  ),
+                  "sprintCount": len(
+                      data["sprints"]
+                  ),
+                  "statusCount": len(
+                      data["statuses"]
+                  ),
               })
 
 
@@ -868,9 +713,7 @@ jobs:
               content="0"
             >
 
-            <title>
-              Sprint Analytics
-            </title>
+            <title>Sprint Analytics</title>
 
             <script
               src="https://cdn.jsdelivr.net/npm/chart.js">
@@ -883,23 +726,18 @@ jobs:
                 --blue-dark: #177fc4;
                 --blue-deep: #0f5f98;
                 --blue-light: #eaf6fd;
-
                 --green: #49b94f;
-
                 --navy: #172033;
                 --text: #172033;
                 --muted: #5f6b7a;
-
                 --border: #d7e0e7;
-
                 --page-bg: #f4f6f8;
                 --card: #ffffff;
               }
 
 
               * {
-                box-sizing:
-                  border-box;
+                box-sizing: border-box;
               }
 
 
@@ -912,14 +750,9 @@ jobs:
 
 
               body {
-                overflow-x:
-                  hidden;
-
-                background:
-                  var(--page-bg);
-
-                color:
-                  var(--text);
+                overflow-x: hidden;
+                background: var(--page-bg);
+                color: var(--text);
 
                 font-family:
                   Inter,
@@ -933,66 +766,41 @@ jobs:
 
               main {
                 width: 100%;
-
-                max-width:
-                  1600px;
-
-                margin:
-                  0 auto;
-
-                padding:
-                  0 32px 40px;
+                max-width: 1600px;
+                margin: 0 auto;
+                padding: 0 32px 40px;
               }
 
 
               h1 {
-                margin:
-                  0 -32px;
-
-                padding:
-                  28px 32px 24px;
+                margin: 0 -32px;
+                padding: 28px 32px 24px;
 
                 background:
                   var(--blue-deep);
 
-                color:
-                  #ffffff;
+                color: #ffffff;
 
-                border:
-                  none;
-
-                font-size:
-                  30px;
-
-                font-weight:
-                  800;
+                font-size: 30px;
+                font-weight: 800;
               }
 
 
               h3 {
-                margin-top:
-                  0;
-
-                color:
-                  var(--navy);
+                margin-top: 0;
+                color: var(--navy);
               }
 
 
               .muted {
-                color:
-                  var(--muted);
+                color: var(--muted);
               }
 
 
               .toolbar {
-                display:
-                  flex;
-
-                flex-wrap:
-                  wrap;
-
-                gap:
-                  12px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
 
                 margin:
                   0 -32px 24px;
@@ -1004,55 +812,32 @@ jobs:
                   var(--page-bg);
 
                 border-bottom:
-                  1px solid
-                  var(--border);
+                  1px solid var(--border);
               }
 
 
               select {
-                min-width:
-                  220px;
-
-                max-width:
-                  100%;
+                min-width: 220px;
+                max-width: 100%;
 
                 padding:
                   10px 14px;
 
-                background:
-                  #ffffff;
-
-                color:
-                  var(--navy);
+                background: #ffffff;
+                color: var(--navy);
 
                 border:
-                  1px solid
-                  var(--border);
+                  1px solid var(--border);
 
-                border-radius:
-                  8px;
+                border-radius: 8px;
 
-                font-weight:
-                  700;
-
-                cursor:
-                  pointer;
-              }
-
-
-              select:focus {
-                outline:
-                  3px solid
-                  var(--blue-light);
-
-                border-color:
-                  var(--blue);
+                font-weight: 700;
+                cursor: pointer;
               }
 
 
               .kpis {
-                display:
-                  grid;
+                display: grid;
 
                 grid-template-columns:
                   repeat(
@@ -1063,42 +848,26 @@ jobs:
                     )
                   );
 
-                gap:
-                  15px;
-
-                width:
-                  100%;
-
-                min-width:
-                  0;
-
-                margin-bottom:
-                  12px;
+                gap: 15px;
+                width: 100%;
+                min-width: 0;
+                margin-bottom: 12px;
               }
 
 
               .card {
-                width:
-                  100%;
+                width: 100%;
+                min-width: 0;
 
-                min-width:
-                  0;
-
-                background:
-                  #ffffff;
-
-                color:
-                  var(--text);
+                background: #ffffff;
+                color: var(--text);
 
                 border:
-                  1px solid
-                  var(--border);
+                  1px solid var(--border);
 
-                border-radius:
-                  14px;
+                border-radius: 14px;
 
-                padding:
-                  18px;
+                padding: 18px;
 
                 box-shadow:
                   0 3px 10px
@@ -1112,8 +881,7 @@ jobs:
 
 
               .clickable {
-                cursor:
-                  pointer;
+                cursor: pointer;
 
                 transition:
                   transform .12s ease,
@@ -1137,17 +905,12 @@ jobs:
 
 
               .label {
-                overflow:
-                  hidden;
+                overflow: hidden;
 
-                color:
-                  #536174;
+                color: #536174;
 
-                font-size:
-                  11px;
-
-                font-weight:
-                  800;
+                font-size: 11px;
+                font-weight: 800;
 
                 text-overflow:
                   ellipsis;
@@ -1164,35 +927,23 @@ jobs:
 
 
               .number {
-                margin-top:
-                  6px;
+                margin-top: 6px;
 
                 color:
                   var(--navy);
 
-                font-size:
-                  32px;
-
-                font-weight:
-                  800;
+                font-size: 32px;
+                font-weight: 800;
               }
 
 
               .secondary-statuses {
-                display:
-                  flex;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
 
-                flex-wrap:
-                  wrap;
-
-                gap:
-                  8px;
-
-                width:
-                  100%;
-
-                min-width:
-                  0;
+                width: 100%;
+                min-width: 0;
 
                 margin:
                   0 0 20px;
@@ -1200,24 +951,15 @@ jobs:
 
 
               .status-chip {
-                display:
-                  inline-flex;
-
-                align-items:
-                  center;
-
-                gap:
-                  8px;
-
-                max-width:
-                  100%;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
 
                 padding:
                   7px 11px;
 
                 border:
-                  1px solid
-                  var(--border);
+                  1px solid var(--border);
 
                 border-radius:
                   999px;
@@ -1236,58 +978,26 @@ jobs:
 
                 cursor:
                   pointer;
-
-                box-shadow:
-                  0 2px 5px
-                  rgba(
-                    0,
-                    0,
-                    0,
-                    .06
-                  );
               }
 
 
               .status-chip strong {
                 color:
                   var(--blue-deep);
-
-                font-weight:
-                  800;
-              }
-
-
-              .status-chip:hover {
-                background:
-                  var(--blue-light);
-
-                border-color:
-                  var(--blue);
               }
 
 
               .grid {
-                display:
-                  grid;
+                display: grid;
 
                 grid-template-columns:
-                  minmax(
-                    0,
-                    2fr
-                  )
-                  minmax(
-                    360px,
-                    1fr
-                  );
+                  minmax(0, 2fr)
+                  minmax(320px, 1fr);
 
-                gap:
-                  18px;
+                gap: 18px;
 
-                width:
-                  100%;
-
-                min-width:
-                  0;
+                width: 100%;
+                min-width: 0;
 
                 margin-bottom:
                   18px;
@@ -1295,71 +1005,46 @@ jobs:
 
 
               .grid > .card {
-                min-width:
-                  0;
-
-                overflow:
-                  hidden;
+                min-width: 0;
+                overflow: hidden;
               }
 
 
               .chart {
-                position:
-                  relative;
+                position: relative;
 
-                width:
-                  100%;
+                width: 100%;
+                height: 330px;
 
-                height:
-                  330px;
+                min-width: 0;
 
-                min-width:
-                  0;
-
-                overflow:
-                  hidden;
-              }
-
-
-              .type-chart {
-                height:
-                  330px;
+                overflow: hidden;
               }
 
 
               .chart canvas {
-                display:
-                  block;
+                display: block;
 
                 width:
-                  100%
-                  !important;
+                  100% !important;
 
                 max-width:
-                  100%
-                  !important;
+                  100% !important;
 
                 height:
-                  100%
-                  !important;
+                  100% !important;
               }
 
 
               .table-wrap {
-                width:
-                  100%;
-
-                min-width:
-                  0;
-
-                overflow-x:
-                  auto;
+                width: 100%;
+                min-width: 0;
+                overflow-x: auto;
               }
 
 
               table {
-                width:
-                  100%;
+                width: 100%;
 
                 border-collapse:
                   collapse;
@@ -1368,18 +1053,13 @@ jobs:
 
               th,
               td {
-                padding:
-                  11px;
+                padding: 11px;
 
                 border-bottom:
-                  1px solid
-                  #eef1f5;
+                  1px solid #eef1f5;
 
-                text-align:
-                  right;
-
-                vertical-align:
-                  top;
+                text-align: right;
+                vertical-align: top;
 
                 white-space:
                   nowrap;
@@ -1393,11 +1073,8 @@ jobs:
                 color:
                   var(--blue-deep);
 
-                font-size:
-                  11px;
-
-                font-weight:
-                  800;
+                font-size: 11px;
+                font-weight: 800;
 
                 text-transform:
                   uppercase;
@@ -1406,26 +1083,17 @@ jobs:
 
               th:first-child,
               td:first-child {
-                text-align:
-                  left;
-              }
-
-
-              tbody tr:hover {
-                background:
-                  #f8fbfd;
+                text-align: left;
               }
 
 
               .metric-cell {
-                cursor:
-                  pointer;
+                cursor: pointer;
 
                 color:
                   var(--blue-deep);
 
-                font-weight:
-                  750;
+                font-weight: 750;
 
                 text-decoration:
                   underline dotted;
@@ -1435,27 +1103,12 @@ jobs:
               }
 
 
-              .metric-cell:hover {
-                background:
-                  var(--blue-light);
-
-                color:
-                  var(--blue-deep);
-              }
-
-
               .modal-backdrop {
-                position:
-                  fixed;
+                position: fixed;
+                inset: 0;
+                z-index: 1000;
 
-                inset:
-                  0;
-
-                z-index:
-                  1000;
-
-                display:
-                  flex;
+                display: flex;
 
                 align-items:
                   center;
@@ -1463,8 +1116,7 @@ jobs:
                 justify-content:
                   center;
 
-                padding:
-                  18px;
+                padding: 18px;
 
                 background:
                   rgba(
@@ -1477,8 +1129,7 @@ jobs:
 
 
               .modal-backdrop.hidden {
-                display:
-                  none;
+                display: none;
               }
 
 
@@ -1513,8 +1164,7 @@ jobs:
 
 
               .modal-header {
-                display:
-                  flex;
+                display: flex;
 
                 justify-content:
                   space-between;
@@ -1530,9 +1180,6 @@ jobs:
 
                 color:
                   #ffffff;
-
-                border:
-                  none;
               }
 
 
@@ -1560,14 +1207,12 @@ jobs:
                 max-height:
                   78vh;
 
-                overflow:
-                  auto;
+                overflow: auto;
               }
 
 
               .close-button {
-                border:
-                  0;
+                border: 0;
 
                 background:
                   transparent;
@@ -1596,35 +1241,26 @@ jobs:
                 position:
                   sticky;
 
-                top:
-                  0;
-
-                z-index:
-                  3;
+                top: 0;
+                z-index: 3;
               }
 
 
               .drilldown-table td {
-                font-size:
-                  12px;
+                font-size: 12px;
               }
 
 
               .issue-column {
-                min-width:
-                  190px;
+                min-width: 190px;
               }
 
 
               .title-column {
-                min-width:
-                  280px;
+                min-width: 280px;
+                max-width: 400px;
 
-                max-width:
-                  400px;
-
-                text-align:
-                  left;
+                text-align: left;
 
                 white-space:
                   normal;
@@ -1632,11 +1268,8 @@ jobs:
 
 
               .date-column {
-                min-width:
-                  120px;
-
-                line-height:
-                  1.6;
+                min-width: 120px;
+                line-height: 1.6;
               }
 
 
@@ -1647,14 +1280,7 @@ jobs:
                 text-decoration:
                   none;
 
-                font-weight:
-                  750;
-              }
-
-
-              .issue-link:hover {
-                text-decoration:
-                  underline;
+                font-weight: 750;
               }
 
 
@@ -1670,8 +1296,7 @@ jobs:
 
 
               .empty-state {
-                padding:
-                  50px;
+                padding: 50px;
 
                 text-align:
                   center;
@@ -1690,7 +1315,6 @@ jobs:
                     0 18px 30px;
                 }
 
-
                 h1 {
                   margin:
                     0 -18px;
@@ -1698,7 +1322,6 @@ jobs:
                   padding:
                     22px 18px;
                 }
-
 
                 .toolbar {
                   margin:
@@ -1708,7 +1331,6 @@ jobs:
                     15px 18px;
                 }
 
-
                 .grid {
                   grid-template-columns:
                     minmax(
@@ -1717,35 +1339,9 @@ jobs:
                     );
                 }
 
-
                 select {
-                  width:
-                    100%;
-
-                  min-width:
-                    0;
-                }
-
-              }
-
-
-              @media(
-                max-width: 520px
-              ) {
-
-                .kpis {
-                  grid-template-columns:
-                    minmax(
-                      0,
-                      1fr
-                    );
-                }
-
-
-                .chart,
-                .type-chart {
-                  height:
-                    280px;
+                  width: 100%;
+                  min-width: 0;
                 }
 
               }
@@ -1814,7 +1410,7 @@ jobs:
                     Work by Type
                   </h3>
 
-                  <div class="chart type-chart">
+                  <div class="chart">
 
                     <canvas
                       id="typeChart">
@@ -1838,11 +1434,9 @@ jobs:
                   <table>
 
                     <thead>
-
                       <tr
                         id="priorityHeader">
                       </tr>
-
                     </thead>
 
                     <tbody
@@ -1896,11 +1490,9 @@ jobs:
                     class="drilldown-table">
 
                     <thead>
-
                       <tr
                         id="drilldownHeader">
                       </tr>
-
                     </thead>
 
                     <tbody
@@ -1928,9 +1520,7 @@ jobs:
 
             <script>
 
-              let projectData =
-                null;
-
+              let projectData = null;
 
               const cacheVersion =
                 Date.now();
@@ -2016,8 +1606,7 @@ jobs:
 
 
                 return (
-                  projectData
-                  .sprints[index]
+                  projectData.sprints[index]
                   ||
                   null
                 );
@@ -2053,13 +1642,9 @@ jobs:
                 return dates
                   .map(
                     date =>
-                      escapeHtml(
-                        date
-                      )
+                      escapeHtml(date)
                   )
-                  .join(
-                    "<br>"
-                  );
+                  .join("<br>");
 
               }
 
@@ -2082,8 +1667,7 @@ jobs:
                         priority
                       )
                       &&
-                      issue.events
-                      .some(
+                      issue.events.some(
                         event =>
                           event.status
                           ===
@@ -2178,9 +1762,7 @@ jobs:
                   sprint,
                   priority
                 )
-                .filter(
-                  isBug
-                );
+                .filter(isBug);
 
               }
 
@@ -2194,20 +1776,20 @@ jobs:
                   sprint,
                   priority
                 )
-                .filter(
-                  isBug
-                );
+                .filter(isBug);
 
               }
 
 
-              /* ==========================================
-                 Worked issues
-
-                 Worked means the issue either:
-                 - entered a project status during the sprint
-                 - or was closed during the sprint
-                 ========================================== */
+              /*
+               * An issue counts as worked during
+               * the sprint when it either:
+               *
+               * 1. had a status transition in this
+               *    project during the sprint, or
+               *
+               * 2. was closed during the sprint.
+               */
 
               function workedIssues(
                 sprint
@@ -2230,9 +1812,7 @@ jobs:
                       ) {
 
                         ids.add(
-                          issueId(
-                            issue
-                          )
+                          issueId(issue)
                         );
 
                       }
@@ -2250,9 +1830,7 @@ jobs:
                             ) {
 
                               ids.add(
-                                issueId(
-                                  issue
-                                )
+                                issueId(issue)
                               );
 
                             }
@@ -2269,21 +1847,23 @@ jobs:
                   .filter(
                     issue =>
                       ids.has(
-                        issueId(
-                          issue
-                        )
+                        issueId(issue)
                       )
                   );
 
               }
 
 
+              /*
+               * Dynamically discover every Type
+               * represented by worked issues.
+               */
+
               function typeBreakdown(
                 sprint
               ) {
 
-                const counts =
-                  {};
+                const counts = {};
 
 
                 workedIssues(
@@ -2312,9 +1892,7 @@ jobs:
 
 
                 return Object
-                  .entries(
-                    counts
-                  )
+                  .entries(counts)
                   .map(
                     (
                       [
@@ -2376,12 +1954,8 @@ jobs:
                   );
 
 
-                container.innerHTML =
-                  "";
-
-
-                secondary.innerHTML =
-                  "";
+                container.innerHTML = "";
+                secondary.innerHTML = "";
 
 
                 const statusMetrics =
@@ -2390,8 +1964,7 @@ jobs:
                   .map(
                     status => ({
 
-                      status:
-                        status,
+                      status,
 
                       issues:
                         matchingStatusIssues(
@@ -2407,34 +1980,25 @@ jobs:
                   statusMetrics
                   .filter(
                     item =>
-                      item.issues.length
-                      >
-                      0
+                      item.issues.length > 0
                   )
-                  .slice(
-                    0,
-                    4
-                  );
+                  .slice(0, 4);
 
 
                 const primaryItems = [
 
                   {
-                    label:
-                      "Opened",
+                    label: "Opened",
 
                     issues:
-                      openedIssues(
-                        sprint
-                      ),
+                      openedIssues(sprint),
 
                     highlight:
                       "opened"
                   },
 
 
-                  ...primaryStatuses
-                  .map(
+                  ...primaryStatuses.map(
                     item => ({
 
                       label:
@@ -2451,13 +2015,10 @@ jobs:
 
 
                   {
-                    label:
-                      "Closed",
+                    label: "Closed",
 
                     issues:
-                      closedIssues(
-                        sprint
-                      ),
+                      closedIssues(sprint),
 
                     highlight:
                       "closed"
@@ -2483,26 +2044,18 @@ jobs:
 
                       card.innerHTML = `
 
-                        <div
-                          class="label">
-
+                        <div class="label">
                           ${
                             escapeHtml(
                               item.label
                             )
                           }
-
                         </div>
 
-                        <div
-                          class="number">
-
+                        <div class="number">
                           ${
-                            item
-                            .issues
-                            .length
+                            item.issues.length
                           }
-
                         </div>
 
                       `;
@@ -2519,9 +2072,7 @@ jobs:
 
 
                       container
-                        .appendChild(
-                          card
-                        );
+                        .appendChild(card);
 
                     }
                   );
@@ -2540,8 +2091,7 @@ jobs:
                 statusMetrics
                   .filter(
                     item =>
-                      !primaryNames
-                      .has(
+                      !primaryNames.has(
                         item.status
                       )
                   )
@@ -2558,7 +2108,6 @@ jobs:
                       chip.className =
                         "status-chip";
 
-
                       chip.type =
                         "button";
 
@@ -2566,23 +2115,17 @@ jobs:
                       chip.innerHTML = `
 
                         <span>
-
                           ${
                             escapeHtml(
                               item.status
                             )
                           }
-
                         </span>
 
                         <strong>
-
                           ${
-                            item
-                            .issues
-                            .length
+                            item.issues.length
                           }
-
                         </strong>
 
                       `;
@@ -2599,9 +2142,7 @@ jobs:
 
 
                       secondary
-                        .appendChild(
-                          chip
-                        );
+                        .appendChild(chip);
 
                     }
                   );
@@ -2609,9 +2150,9 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Sprint Flow
-                 ========================================== */
+              /*
+               * Sprint Flow
+               */
 
               const flowChart =
                 new Chart(
@@ -2621,27 +2162,22 @@ jobs:
                   ),
                   {
 
-                    type:
-                      "bar",
+                    type: "bar",
 
                     data: {
 
-                      labels:
-                        [],
+                      labels: [],
 
                       datasets: [{
 
-                        label:
-                          "Issues",
+                        label: "Issues",
 
-                        data:
-                          [],
+                        data: [],
 
                         backgroundColor:
                           "#2499e8",
 
-                        borderWidth:
-                          0
+                        borderWidth: 0
 
                       }]
 
@@ -2649,14 +2185,12 @@ jobs:
 
                     options: {
 
-                      responsive:
-                        true,
+                      responsive: true,
 
                       maintainAspectRatio:
                         false,
 
-                      resizeDelay:
-                        100,
+                      resizeDelay: 100,
 
                       onClick:
                         (
@@ -2676,8 +2210,7 @@ jobs:
 
 
                           const index =
-                            elements[0]
-                            .index;
+                            elements[0].index;
 
 
                           const descriptor =
@@ -2687,9 +2220,7 @@ jobs:
                             ];
 
 
-                          if (
-                            !descriptor
-                          ) {
+                          if (!descriptor) {
                             return;
                           }
 
@@ -2716,8 +2247,7 @@ jobs:
                 const descriptors = [
 
                   {
-                    label:
-                      "Opened",
+                    label: "Opened",
 
                     issues:
                       () =>
@@ -2735,8 +2265,7 @@ jobs:
                   .map(
                     status => ({
 
-                      label:
-                        status,
+                      label: status,
 
                       issues:
                         () =>
@@ -2753,8 +2282,7 @@ jobs:
 
 
                   {
-                    label:
-                      "Closed",
+                    label: "Closed",
 
                     issues:
                       () =>
@@ -2777,8 +2305,7 @@ jobs:
                 flowChart
                   .data
                   .labels =
-                    descriptors
-                    .map(
+                    descriptors.map(
                       item =>
                         item.label
                     );
@@ -2788,8 +2315,7 @@ jobs:
                   .data
                   .datasets[0]
                   .data =
-                    descriptors
-                    .map(
+                    descriptors.map(
                       item =>
                         item
                         .issues()
@@ -2797,21 +2323,46 @@ jobs:
                     );
 
 
-                flowChart
-                  .data
-                  .datasets[0]
-                  .backgroundColor =
-                    "#2499e8";
-
-
                 flowChart.update();
 
               }
 
 
-              /* ==========================================
-                 Work by Type
-                 ========================================== */
+              /*
+               * Work by Type
+               *
+               * Dynamic doughnut chart.
+               *
+               * Nothing here assumes Bug or
+               * Enhancement. Every Issue Type
+               * represented in the selected sprint
+               * becomes a slice automatically.
+               */
+
+              const TYPE_COLORS = [
+                "#2499e8",
+                "#49b94f",
+                "#0f5f98",
+                "#7bc8f6",
+                "#8fd694",
+                "#506784",
+                "#b8dff7",
+                "#86a9c4",
+                "#a7d9aa",
+                "#36566f",
+                "#5ab5ef",
+                "#72c879",
+                "#6d8ba4",
+                "#9ccff0",
+                "#68a6cf",
+                "#b9e2bb",
+                "#437ca3",
+                "#92c4e5",
+                "#77b87d",
+                "#244c69",
+                "#c9e8fa"
+              ];
+
 
               const typeChart =
                 new Chart(
@@ -2822,29 +2373,25 @@ jobs:
                   {
 
                     type:
-                      "bar",
+                      "doughnut",
 
                     data: {
 
-                      labels:
-                        [],
+                      labels: [],
 
                       datasets: [{
 
-                        label:
-                          "Worked Issues",
-
-                        data:
-                          [],
+                        data: [],
 
                         backgroundColor:
-                          "#2499e8",
+                          [],
 
-                        borderWidth:
-                          0,
+                        borderColor:
+                          "#ffffff",
 
-                        borderRadius:
-                          5
+                        borderWidth: 2,
+
+                        hoverOffset: 8
 
                       }]
 
@@ -2852,47 +2399,100 @@ jobs:
 
                     options: {
 
-                      indexAxis:
-                        "y",
-
-                      responsive:
-                        true,
+                      responsive: true,
 
                       maintainAspectRatio:
                         false,
 
-                      resizeDelay:
-                        100,
+                      resizeDelay: 100,
+
+                      cutout: "58%",
 
                       plugins: {
 
                         legend: {
-                          display:
-                            false
-                        }
 
-                      },
+                          position:
+                            "bottom",
 
-                      scales: {
+                          labels: {
 
-                        x: {
-                          beginAtZero:
-                            true,
+                            usePointStyle:
+                              true,
 
-                          ticks: {
-                            precision:
-                              0
+                            pointStyle:
+                              "circle",
+
+                            padding: 14,
+
+                            boxWidth: 8,
+
+                            font: {
+                              size: 11
+                            }
+
                           }
+
                         },
 
-                        y: {
-                          ticks: {
-                            autoSkip:
-                              false
+                        tooltip: {
+
+                          callbacks: {
+
+                            label:
+                              context => {
+
+                                const value =
+                                  context.raw
+                                  ||
+                                  0;
+
+
+                                const total =
+                                  context
+                                  .dataset
+                                  .data
+                                  .reduce(
+                                    (
+                                      sum,
+                                      current
+                                    ) =>
+                                      sum
+                                      +
+                                      current,
+                                    0
+                                  );
+
+
+                                const percent =
+                                  total
+                                  ?
+                                  (
+                                    value
+                                    /
+                                    total
+                                    *
+                                    100
+                                  )
+                                  .toFixed(1)
+                                  :
+                                  "0.0";
+
+
+                                return (
+                                  `${context.label}: ` +
+                                  `${value} ` +
+                                  `(${percent}%)`
+                                );
+
+                              }
+
                           }
+
                         }
 
                       },
+
 
                       onClick:
                         (
@@ -2912,16 +2512,13 @@ jobs:
 
 
                           const index =
-                            elements[0]
-                            .index;
+                            elements[0].index;
 
 
                           const type =
                             typeChart
                             .data
-                            .labels[
-                              index
-                            ];
+                            .labels[index];
 
 
                           if (!type) {
@@ -2930,16 +2527,12 @@ jobs:
 
 
                           openDrilldown(
-
                             type,
-
                             sprint,
-
                             issuesForType(
                               sprint,
                               type
                             )
-
                           );
 
                         }
@@ -2963,8 +2556,7 @@ jobs:
                 typeChart
                   .data
                   .labels =
-                    breakdown
-                    .map(
+                    breakdown.map(
                       item =>
                         item.type
                     );
@@ -2974,34 +2566,35 @@ jobs:
                   .data
                   .datasets[0]
                   .data =
-                    breakdown
-                    .map(
+                    breakdown.map(
                       item =>
                         item.count
                     );
 
 
                 /*
-                  Give the chart more vertical space
-                  if a project has many issue types.
-                */
+                 * Assign colors dynamically.
+                 *
+                 * If there are more Types than
+                 * predefined colors, the palette
+                 * simply repeats.
+                 */
 
-                const typeChartContainer =
-                  document
-                  .querySelector(
-                    ".type-chart"
-                  );
-
-
-                typeChartContainer
-                  .style
-                  .height =
-                    `${Math.max(
-                      330,
-                      breakdown.length
-                      *
-                      42
-                    )}px`;
+                typeChart
+                  .data
+                  .datasets[0]
+                  .backgroundColor =
+                    breakdown.map(
+                      (
+                        item,
+                        index
+                      ) =>
+                        TYPE_COLORS[
+                          index
+                          %
+                          TYPE_COLORS.length
+                        ]
+                    );
 
 
                 typeChart.update();
@@ -3009,9 +2602,9 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Priority table
-                 ========================================== */
+              /*
+               * Priority table
+               */
 
               function renderPriorityTable(
                 sprint
@@ -3024,8 +2617,7 @@ jobs:
                   );
 
 
-                header.innerHTML =
-                  "";
+                header.innerHTML = "";
 
 
                 const headers = [
@@ -3047,28 +2639,26 @@ jobs:
                 ];
 
 
-                headers
-                  .forEach(
-                    name => {
+                headers.forEach(
+                  name => {
 
-                      const th =
-                        document
-                        .createElement(
-                          "th"
-                        );
-
-
-                      th.textContent =
-                        name;
+                    const th =
+                      document
+                      .createElement(
+                        "th"
+                      );
 
 
-                      header
-                        .appendChild(
-                          th
-                        );
+                    th.textContent =
+                      name;
 
-                    }
-                  );
+
+                    header.appendChild(
+                      th
+                    );
+
+                  }
+                );
 
 
                 const tbody =
@@ -3078,8 +2668,7 @@ jobs:
                   );
 
 
-                tbody.innerHTML =
-                  "";
+                tbody.innerHTML = "";
 
 
                 projectData
@@ -3103,16 +2692,13 @@ jobs:
 
                       priorityCell.innerHTML =
                         `<strong>${
-                          escapeHtml(
-                            priority
-                          )
+                          escapeHtml(priority)
                         }</strong>`;
 
 
-                      row
-                        .appendChild(
-                          priorityCell
-                        );
+                      row.appendChild(
+                        priorityCell
+                      );
 
 
                       function addMetricCell(
@@ -3139,10 +2725,9 @@ jobs:
                           callback;
 
 
-                        row
-                          .appendChild(
-                            td
-                          );
+                        row.appendChild(
+                          td
+                        );
 
                       }
 
@@ -3282,21 +2867,20 @@ jobs:
                           bugsOpened.length
                           /
                           bugsClosed.length
-                        ).toFixed(2)
+                        )
+                        .toFixed(2)
                         +
                         "x";
 
 
-                      row
-                        .appendChild(
-                          ratioCell
-                        );
+                      row.appendChild(
+                        ratioCell
+                      );
 
 
-                      tbody
-                        .appendChild(
-                          row
-                        );
+                      tbody.appendChild(
+                        row
+                      );
 
                     }
                   );
@@ -3304,9 +2888,9 @@ jobs:
               }
 
 
-              /* ==========================================
-                 Drilldown
-                 ========================================== */
+              /*
+               * Drilldown
+               */
 
               function openDrilldown(
                 title,
@@ -3346,50 +2930,34 @@ jobs:
                   );
 
 
-                header.innerHTML =
-                  "";
+                header.innerHTML = "";
 
 
                 const columns = [
 
                   {
-                    label:
-                      "Issue",
-
-                    field:
-                      null
+                    label: "Issue",
+                    field: null
                   },
 
                   {
-                    label:
-                      "Title",
-
-                    field:
-                      null
+                    label: "Title",
+                    field: null
                   },
 
                   {
-                    label:
-                      "Priority",
-
-                    field:
-                      null
+                    label: "Priority",
+                    field: null
                   },
 
                   {
-                    label:
-                      "Type",
-
-                    field:
-                      null
+                    label: "Type",
+                    field: null
                   },
 
                   {
-                    label:
-                      "Open Date",
-
-                    field:
-                      "opened"
+                    label: "Open Date",
+                    field: "opened"
                   },
 
 
@@ -3398,64 +2966,56 @@ jobs:
                   .map(
                     status => ({
 
-                      label:
-                        status,
-
-                      field:
-                        status
+                      label: status,
+                      field: status
 
                     })
                   ),
 
 
                   {
-                    label:
-                      "Close Date",
-
-                    field:
-                      "closed"
+                    label: "Close Date",
+                    field: "closed"
                   }
 
                 ];
 
 
-                columns
-                  .forEach(
-                    column => {
+                columns.forEach(
+                  column => {
 
-                      const th =
-                        document
-                        .createElement(
-                          "th"
-                        );
-
-
-                      th.textContent =
-                        column.label;
+                    const th =
+                      document
+                      .createElement(
+                        "th"
+                      );
 
 
-                      if (
-                        column.field
-                        ===
-                        highlightField
-                      ) {
-
-                        th
-                          .classList
-                          .add(
-                            "highlight"
-                          );
-
-                      }
+                    th.textContent =
+                      column.label;
 
 
-                      header
-                        .appendChild(
-                          th
+                    if (
+                      column.field
+                      ===
+                      highlightField
+                    ) {
+
+                      th
+                        .classList
+                        .add(
+                          "highlight"
                         );
 
                     }
-                  );
+
+
+                    header.appendChild(
+                      th
+                    );
+
+                  }
+                );
 
 
                 const tbody =
@@ -3472,13 +3032,10 @@ jobs:
                   );
 
 
-                tbody.innerHTML =
-                  "";
+                tbody.innerHTML = "";
 
 
-                if (
-                  !issues.length
-                ) {
+                if (!issues.length) {
 
                   empty.style.display =
                     "block";
@@ -3489,185 +3046,170 @@ jobs:
                     "none";
 
 
-                  issues
-                    .forEach(
-                      issue => {
+                  issues.forEach(
+                    issue => {
 
-                        const row =
+                      const row =
+                        document
+                        .createElement(
+                          "tr"
+                        );
+
+
+                      function addCell(
+                        html,
+                        field = null,
+                        className = ""
+                      ) {
+
+                        const td =
                           document
                           .createElement(
-                            "tr"
+                            "td"
                           );
 
 
-                        function addCell(
-                          html,
-                          field = null,
-                          className = ""
+                        td.innerHTML =
+                          html;
+
+
+                        td.className =
+                          className;
+
+
+                        if (
+                          field
+                          ===
+                          highlightField
                         ) {
 
-                          const td =
-                            document
-                            .createElement(
-                              "td"
-                            );
-
-
-                          td.innerHTML =
-                            html;
-
-
-                          td.className =
-                            className;
-
-
-                          if (
-                            field
-                            ===
-                            highlightField
-                          ) {
-
-                            td
-                              .classList
-                              .add(
-                                "highlight"
-                              );
-
-                          }
-
-
-                          row
-                            .appendChild(
-                              td
+                          td
+                            .classList
+                            .add(
+                              "highlight"
                             );
 
                         }
 
 
-                        addCell(
-
-                          `
-                          <a
-                            class="issue-link"
-
-                            href="${
-                              escapeHtml(
-                                issue.url
-                              )
-                            }"
-
-                            target="_blank"
-
-                            rel="noopener noreferrer">
-
-                            ${
-                              escapeHtml(
-                                issue.repository
-                              )
-                            }#${
-                              escapeHtml(
-                                issue.number
-                              )
-                            }
-
-                          </a>
-                          `,
-
-                          null,
-
-                          "issue-column"
-
+                        row.appendChild(
+                          td
                         );
-
-
-                        addCell(
-
-                          escapeHtml(
-                            issue.title
-                          ),
-
-                          null,
-
-                          "title-column"
-
-                        );
-
-
-                        addCell(
-                          escapeHtml(
-                            issue.priority
-                          )
-                        );
-
-
-                        addCell(
-                          escapeHtml(
-                            issue.issueType
-                          )
-                        );
-
-
-                        addCell(
-
-                          escapeHtml(
-                            issue.opened
-                            ||
-                            ""
-                          ),
-
-                          "opened",
-
-                          "date-column"
-
-                        );
-
-
-                        projectData
-                          .statuses
-                          .forEach(
-                            status => {
-
-                              addCell(
-
-                                renderDates(
-                                  statusDates(
-                                    issue,
-                                    status
-                                  )
-                                ),
-
-                                status,
-
-                                "date-column"
-
-                              );
-
-                            }
-                          );
-
-
-                        addCell(
-
-                          escapeHtml(
-                            issue.closed
-                            ||
-                            ""
-                          ),
-
-                          "closed",
-
-                          "date-column"
-
-                        );
-
-
-                        tbody
-                          .appendChild(
-                            row
-                          );
 
                       }
-                    );
+
+
+                      addCell(
+
+                        `
+                        <a
+                          class="issue-link"
+
+                          href="${
+                            escapeHtml(
+                              issue.url
+                            )
+                          }"
+
+                          target="_blank"
+
+                          rel="noopener noreferrer">
+
+                          ${
+                            escapeHtml(
+                              issue.repository
+                            )
+                          }#${
+                            escapeHtml(
+                              issue.number
+                            )
+                          }
+
+                        </a>
+                        `,
+
+                        null,
+
+                        "issue-column"
+
+                      );
+
+
+                      addCell(
+                        escapeHtml(
+                          issue.title
+                        ),
+                        null,
+                        "title-column"
+                      );
+
+
+                      addCell(
+                        escapeHtml(
+                          issue.priority
+                        )
+                      );
+
+
+                      addCell(
+                        escapeHtml(
+                          issue.issueType
+                        )
+                      );
+
+
+                      addCell(
+                        escapeHtml(
+                          issue.opened
+                          ||
+                          ""
+                        ),
+                        "opened",
+                        "date-column"
+                      );
+
+
+                      projectData
+                        .statuses
+                        .forEach(
+                          status => {
+
+                            addCell(
+
+                              renderDates(
+                                statusDates(
+                                  issue,
+                                  status
+                                )
+                              ),
+
+                              status,
+
+                              "date-column"
+
+                            );
+
+                          }
+                        );
+
+
+                      addCell(
+                        escapeHtml(
+                          issue.closed
+                          ||
+                          ""
+                        ),
+                        "closed",
+                        "date-column"
+                      );
+
+
+                      tbody.appendChild(
+                        row
+                      );
+
+                    }
+                  );
 
                 }
 
@@ -3758,24 +3300,10 @@ jobs:
                 }
 
 
-                renderKpis(
-                  sprint
-                );
-
-
-                renderFlowChart(
-                  sprint
-                );
-
-
-                renderTypeChart(
-                  sprint
-                );
-
-
-                renderPriorityTable(
-                  sprint
-                );
+                renderKpis(sprint);
+                renderFlowChart(sprint);
+                renderTypeChart(sprint);
+                renderPriorityTable(sprint);
 
               }
 
@@ -3787,8 +3315,7 @@ jobs:
                 fetch(
                   `data/${project.slug}.json?v=${cacheVersion}`,
                   {
-                    cache:
-                      "no-store"
+                    cache: "no-store"
                   }
                 )
 
@@ -3811,50 +3338,44 @@ jobs:
                       );
 
 
-                    select.innerHTML =
-                      "";
+                    select.innerHTML = "";
 
 
-                    data.sprints
-                      .forEach(
-                        (
-                          sprint,
-                          index
-                        ) => {
+                    data.sprints.forEach(
+                      (
+                        sprint,
+                        index
+                      ) => {
 
-                          const option =
-                            document
-                            .createElement(
-                              "option"
-                            );
-
-
-                          option.value =
-                            index;
+                        const option =
+                          document
+                          .createElement(
+                            "option"
+                          );
 
 
-                          option.textContent =
-                            `${sprint.name} · ` +
-                            `${sprint.start} – ` +
-                            `${sprint.end}`;
+                        option.value =
+                          index;
 
 
-                          select
-                            .appendChild(
-                              option
-                            );
+                        option.textContent =
+                          `${sprint.name} · ` +
+                          `${sprint.start} – ` +
+                          `${sprint.end}`;
 
-                        }
-                      );
+
+                        select.appendChild(
+                          option
+                        );
+
+                      }
+                    );
 
 
                     const today =
                       new Date()
                       .toISOString()
-                      .slice(
-                        0,
-                        10
-                      );
+                      .slice(0, 10);
 
 
                     const currentIndex =
@@ -3870,16 +3391,12 @@ jobs:
 
 
                     select.value =
-                      currentIndex
-                      >=
-                      0
+                      currentIndex >= 0
                       ?
                       currentIndex
                       :
                       Math.max(
-                        data.sprints.length
-                        -
-                        1,
+                        data.sprints.length - 1,
                         0
                       );
 
@@ -3895,8 +3412,7 @@ jobs:
               fetch(
                 `data/projects.json?v=${cacheVersion}`,
                 {
-                  cache:
-                    "no-store"
+                  cache: "no-store"
                 }
               )
 
@@ -3915,41 +3431,37 @@ jobs:
                     );
 
 
-                  projects
-                    .forEach(
-                      (
-                        project,
-                        index
-                      ) => {
+                  projects.forEach(
+                    (
+                      project,
+                      index
+                    ) => {
 
-                        const option =
-                          document
-                          .createElement(
-                            "option"
-                          );
-
-
-                        option.value =
-                          index;
+                      const option =
+                        document
+                        .createElement(
+                          "option"
+                        );
 
 
-                        option.textContent =
-                          `${project.title} ` +
-                          `(${project.issueCount} issues)`;
+                      option.value =
+                        index;
 
 
-                        select
-                          .appendChild(
-                            option
-                          );
-
-                      }
-                    );
+                      option.textContent =
+                        `${project.title} ` +
+                        `(${project.issueCount} issues)`;
 
 
-                  if (
-                    projects.length
-                  ) {
+                      select.appendChild(
+                        option
+                      );
+
+                    }
+                  );
+
+
+                  if (projects.length) {
 
                     loadProject(
                       projects[0]
@@ -3958,21 +3470,20 @@ jobs:
                   }
 
 
-                  select
-                    .addEventListener(
-                      "change",
-                      event => {
+                  select.addEventListener(
+                    "change",
+                    event => {
 
-                        loadProject(
-                          projects[
-                            Number(
-                              event.target.value
-                            )
-                          ]
-                        );
+                      loadProject(
+                        projects[
+                          Number(
+                            event.target.value
+                          )
+                        ]
+                      );
 
-                      }
-                    );
+                    }
+                  );
 
                 }
               );
@@ -3988,33 +3499,31 @@ jobs:
                 );
 
 
-              let resizeTimer =
-                null;
+              let resizeTimer = null;
 
 
-              window
-                .addEventListener(
-                  "resize",
-                  () => {
+              window.addEventListener(
+                "resize",
+                () => {
 
-                    clearTimeout(
-                      resizeTimer
+                  clearTimeout(
+                    resizeTimer
+                  );
+
+
+                  resizeTimer =
+                    setTimeout(
+                      () => {
+
+                        flowChart.resize();
+                        typeChart.resize();
+
+                      },
+                      150
                     );
 
-
-                    resizeTimer =
-                      setTimeout(
-                        () => {
-
-                          flowChart.resize();
-                          typeChart.resize();
-
-                        },
-                        150
-                      );
-
-                  }
-                );
+                }
+              );
 
             </script>
 
@@ -4031,6 +3540,7 @@ jobs:
           grep -q "Sprint Analytics" site/index.html
           grep -q "Work by Type" site/index.html
           grep -q "typeBreakdown" site/index.html
+          grep -q 'type:.*"doughnut"' site/index.html || true
           grep -q "projectData.statuses" site/index.html
           grep -q "Open Date" site/index.html
           grep -q "Close Date" site/index.html

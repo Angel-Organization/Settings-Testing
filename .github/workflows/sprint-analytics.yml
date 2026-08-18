@@ -368,10 +368,7 @@ jobs:
 
                           name = field.get("name")
 
-                          # ------------------------------
-                          # Dynamic Status options
-                          # ------------------------------
-
+                          # Dynamic project statuses
                           if name == "Status":
 
                               statuses = [
@@ -384,11 +381,7 @@ jobs:
                                   )
                               ]
 
-                          # ------------------------------
-                          # Optional project Priority
-                          # options
-                          # ------------------------------
-
+                          # Dynamic project priorities
                           if name == "Priority":
 
                               project_priorities = [
@@ -401,10 +394,7 @@ jobs:
                                   )
                               ]
 
-                          # ------------------------------
-                          # Iteration / Sprint field
-                          # ------------------------------
-
+                          # Dynamic sprint / iteration field
                           config = (
                               field.get(
                                   "configuration"
@@ -541,10 +531,7 @@ jobs:
                   ]
 
 
-              # ==========================================
-              # Load ALL status transitions
-              # ==========================================
-
+              # Load all project status transitions
               for index, issue in enumerate(
                   issues,
                   start=1,
@@ -615,13 +602,11 @@ jobs:
                       )
 
 
-              # ==========================================
-              # Discover actual priorities present in data
-              # ==========================================
-
+              # Build priority list
               actual_priorities = []
 
               for priority in DEFAULT_PRIORITIES:
+
                   if any(
                       issue["priority"] == priority
                       for issue in issues
@@ -630,7 +615,9 @@ jobs:
                           priority
                       )
 
+
               for priority in project_priorities:
+
                   if (
                       priority
                       not in actual_priorities
@@ -638,6 +625,7 @@ jobs:
                       actual_priorities.append(
                           priority
                       )
+
 
               extra_priorities = sorted({
                   issue["priority"]
@@ -654,6 +642,7 @@ jobs:
               actual_priorities.extend(
                   extra_priorities
               )
+
 
               if any(
                   issue["priority"]
@@ -688,6 +677,7 @@ jobs:
 
 
           output_projects = []
+
 
           for project in projects:
 
@@ -743,9 +733,18 @@ jobs:
                       ),
               })
 
+
           Path(
               "site/data/projects.json"
           ).write_text(
+              json.dumps(
+                  output_projects,
+                  indent=2,
+              )
+          )
+
+
+          print(
               json.dumps(
                   output_projects,
                   indent=2,
@@ -779,16 +778,10 @@ jobs:
               src="https://cdn.jsdelivr.net/npm/chart.js">
             </script>
 
+
             <style>
 
               :root {
-                --bg: #f5f7f8;
-                --card: #ffffff;
-                --border: #dfe4e8;
-
-                --text: #172033;
-                --muted: #667085;
-
                 --blue: #2499e8;
                 --blue-dark: #177fc4;
                 --blue-light: #eaf6fd;
@@ -796,6 +789,12 @@ jobs:
                 --green: #49b94f;
                 --green-dark: #359b3d;
                 --green-light: #edf9ef;
+
+                --navy: #172033;
+                --muted: #667085;
+                --border: #dce5eb;
+                --bg: #f4f8fa;
+                --card: #ffffff;
               }
 
 
@@ -812,7 +811,7 @@ jobs:
                   var(--bg);
 
                 color:
-                  var(--text);
+                  var(--navy);
 
                 font-family:
                   Inter,
@@ -832,22 +831,45 @@ jobs:
                   auto;
 
                 padding:
-                  32px;
+                  0 32px 40px;
               }
 
 
               h1 {
                 margin:
-                  0 0 4px;
+                  0 -32px 0;
+
+                padding:
+                  28px 32px;
 
                 color:
-                  var(--blue-dark);
+                  white;
+
+                background:
+                  linear-gradient(
+                    110deg,
+                    var(--blue-dark),
+                    var(--blue)
+                  );
+
+                font-size:
+                  30px;
+
+                font-weight:
+                  750;
+
+                border-bottom:
+                  5px solid
+                  var(--green);
               }
 
 
               h3 {
                 margin-top:
                   0;
+
+                color:
+                  var(--navy);
               }
 
 
@@ -865,23 +887,61 @@ jobs:
                   12px;
 
                 margin:
-                  24px 0;
-              }
+                  0 -32px 24px;
 
-
-              select {
                 padding:
-                  10px 14px;
+                  18px 32px;
 
                 background:
                   white;
 
-                border:
+                border-bottom:
                   1px solid
                   var(--border);
+              }
+
+
+              select {
+                min-width:
+                  220px;
+
+                padding:
+                  10px 38px 10px 14px;
+
+                background:
+                  white;
+
+                color:
+                  var(--navy);
+
+                border:
+                  1px solid
+                  var(--blue);
 
                 border-radius:
                   8px;
+
+                font-weight:
+                  600;
+
+                cursor:
+                  pointer;
+              }
+
+
+              select:hover {
+                border-color:
+                  var(--green);
+              }
+
+
+              select:focus {
+                outline:
+                  3px solid
+                  var(--blue-light);
+
+                border-color:
+                  var(--blue-dark);
               }
 
 
@@ -902,7 +962,7 @@ jobs:
                   15px;
 
                 margin-bottom:
-                  18px;
+                  20px;
               }
 
 
@@ -919,12 +979,81 @@ jobs:
 
                 padding:
                   18px;
+
+                box-shadow:
+                  0 2px 6px
+                  rgba(
+                    23,
+                    32,
+                    51,
+                    .04
+                  );
+              }
+
+
+              .kpis .card {
+                position:
+                  relative;
+
+                overflow:
+                  hidden;
+
+                border-top:
+                  4px solid
+                  var(--blue);
+              }
+
+
+              .kpis .card:nth-child(even) {
+                border-top-color:
+                  var(--green);
+              }
+
+
+              .kpis .card:nth-child(odd) .number {
+                color:
+                  var(--blue-dark);
+              }
+
+
+              .kpis .card:nth-child(even) .number {
+                color:
+                  var(--green-dark);
               }
 
 
               .clickable {
                 cursor:
                   pointer;
+
+                transition:
+                  transform .12s ease,
+                  border-color .12s ease,
+                  box-shadow .12s ease;
+              }
+
+
+              .clickable:hover {
+                transform:
+                  translateY(-2px);
+
+                border-color:
+                  var(--blue);
+
+                box-shadow:
+                  0 8px 20px
+                  rgba(
+                    23,
+                    127,
+                    196,
+                    .12
+                  );
+              }
+
+
+              .kpis .card:nth-child(even):hover {
+                border-color:
+                  var(--green);
               }
 
 
@@ -945,22 +1074,7 @@ jobs:
                   11px;
 
                 font-weight:
-                  600;
-              }
-
-
-              .clickable:hover {
-                border-color:
-                  var(--green);
-
-                box-shadow:
-                  0 4px 15px
-                  rgba(
-                    0,
-                    0,
-                    0,
-                    .06
-                  );
+                  700;
               }
 
 
@@ -972,10 +1086,13 @@ jobs:
                   11px;
 
                 font-weight:
-                  700;
+                  750;
 
                 text-transform:
                   uppercase;
+
+                letter-spacing:
+                  .04em;
               }
 
 
@@ -984,10 +1101,10 @@ jobs:
                   6px;
 
                 font-size:
-                  30px;
+                  32px;
 
                 font-weight:
-                  750;
+                  800;
               }
 
 
@@ -1003,6 +1120,19 @@ jobs:
 
                 margin-bottom:
                   18px;
+              }
+
+
+              .grid .card {
+                border-top:
+                  4px solid
+                  var(--blue);
+              }
+
+
+              .grid .card:nth-child(2) {
+                border-top-color:
+                  var(--green);
               }
 
 
@@ -1047,10 +1177,34 @@ jobs:
               }
 
 
+              th {
+                background:
+                  var(--blue-light);
+
+                color:
+                  var(--blue-dark);
+
+                font-size:
+                  11px;
+
+                font-weight:
+                  750;
+
+                text-transform:
+                  uppercase;
+              }
+
+
               th:first-child,
               td:first-child {
                 text-align:
                   left;
+              }
+
+
+              tbody tr:hover {
+                background:
+                  #f8fbfd;
               }
 
 
@@ -1062,7 +1216,7 @@ jobs:
                   var(--blue-dark);
 
                 font-weight:
-                  600;
+                  700;
 
                 text-decoration:
                   underline dotted;
@@ -1137,6 +1291,15 @@ jobs:
 
                 overflow:
                   hidden;
+
+                box-shadow:
+                  0 30px 80px
+                  rgba(
+                    0,
+                    0,
+                    0,
+                    .25
+                  );
               }
 
 
@@ -1147,12 +1310,42 @@ jobs:
                 justify-content:
                   space-between;
 
+                align-items:
+                  center;
+
                 padding:
                   20px 24px;
 
+                color:
+                  white;
+
+                background:
+                  linear-gradient(
+                    110deg,
+                    var(--blue-dark),
+                    var(--blue)
+                  );
+
                 border-bottom:
-                  1px solid
-                  var(--border);
+                  4px solid
+                  var(--green);
+              }
+
+
+              .modal-header h2 {
+                margin:
+                  0 0 4px;
+              }
+
+
+              .modal-header .muted {
+                color:
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .82
+                  );
               }
 
 
@@ -1171,6 +1364,9 @@ jobs:
 
                 background:
                   transparent;
+
+                color:
+                  white;
 
                 font-size:
                   32px;
@@ -1191,7 +1387,10 @@ jobs:
                   3;
 
                 background:
-                  #f8fafc;
+                  var(--blue-light);
+
+                color:
+                  var(--blue-dark);
 
                 font-size:
                   11px;
@@ -1242,14 +1441,27 @@ jobs:
                   none;
 
                 font-weight:
-                  600;
+                  700;
+              }
+
+
+              .issue-link:hover {
+                color:
+                  var(--green-dark);
+
+                text-decoration:
+                  underline;
               }
 
 
               .highlight {
                 background:
-                  var(--blue-light)
+                  var(--green-light)
                   !important;
+
+                box-shadow:
+                  inset 3px 0 0
+                  var(--green);
               }
 
 
@@ -1265,14 +1477,40 @@ jobs:
               }
 
 
-              @media(
-                max-width:900px
-              ) {
+              @media(max-width:900px) {
 
                 main {
                   padding:
-                    18px;
+                    0 18px 30px;
                 }
+
+
+                h1 {
+                  margin:
+                    0 -18px;
+
+                  padding:
+                    22px 18px;
+                }
+
+
+                .toolbar {
+                  margin:
+                    0 -18px 20px;
+
+                  padding:
+                    15px 18px;
+
+                  flex-direction:
+                    column;
+                }
+
+
+                select {
+                  width:
+                    100%;
+                }
+
 
                 .grid {
                   grid-template-columns:
@@ -1308,19 +1546,11 @@ jobs:
               </div>
 
 
-              <!-- =========================================
-                   Dynamic KPIs
-                   ========================================= -->
-
               <section
                 id="statusKpis"
                 class="kpis">
               </section>
 
-
-              <!-- =========================================
-                   Charts
-                   ========================================= -->
 
               <div class="grid">
 
@@ -1335,9 +1565,11 @@ jobs:
                   </div>
 
                   <div class="chart">
+
                     <canvas
                       id="flowChart">
                     </canvas>
+
                   </div>
 
                 </section>
@@ -1354,19 +1586,17 @@ jobs:
                   </div>
 
                   <div class="chart">
+
                     <canvas
                       id="mixChart">
                     </canvas>
+
                   </div>
 
                 </section>
 
               </div>
 
-
-              <!-- =========================================
-                   Dynamic priority table
-                   ========================================= -->
 
               <section class="card">
 
@@ -1383,9 +1613,11 @@ jobs:
                   <table>
 
                     <thead>
+
                       <tr
                         id="priorityHeader">
                       </tr>
+
                     </thead>
 
                     <tbody
@@ -1400,10 +1632,6 @@ jobs:
 
             </main>
 
-
-            <!-- =========================================
-                 Dynamic drilldown
-                 ========================================= -->
 
             <div
               id="drilldownBackdrop"
@@ -1425,6 +1653,7 @@ jobs:
                     </div>
 
                   </div>
+
 
                   <button
                     id="closeDrilldown"
@@ -1486,11 +1715,9 @@ jobs:
                 return (
                   date
                   &&
-                  date >=
-                    sprint.start
+                  date >= sprint.start
                   &&
-                  date <=
-                    sprint.end
+                  date <= sprint.end
                 );
 
               }
@@ -1584,6 +1811,7 @@ jobs:
                   return null;
                 }
 
+
                 const index =
                   Number(
                     document
@@ -1593,9 +1821,9 @@ jobs:
                     .value
                   );
 
+
                 return (
-                  projectData
-                  .sprints[index]
+                  projectData.sprints[index]
                   ||
                   null
                 );
@@ -1637,7 +1865,9 @@ jobs:
                         date
                       )
                   )
-                  .join("<br>");
+                  .join(
+                    "<br>"
+                  );
 
               }
 
@@ -1840,30 +2070,37 @@ jobs:
                           )
                         )
                       ) {
+
                         return false;
+
                       }
 
+
                       if (
-                        type
-                        ===
+                        type ===
                         "bug"
                       ) {
+
                         return isBug(
                           issue
                         );
+
                       }
 
+
                       if (
-                        type
-                        ===
+                        type ===
                         "enhancement"
                       ) {
+
                         return (
                           isEnhancement(
                             issue
                           )
                         );
+
                       }
+
 
                       return true;
 
@@ -1873,10 +2110,6 @@ jobs:
 
               }
 
-
-              // ============================================
-              // Dynamic KPI cards
-              // ============================================
 
               function renderKpis(
                 sprint
@@ -1894,6 +2127,7 @@ jobs:
 
 
                 const items = [
+
                   {
                     label:
                       "Opened",
@@ -1915,10 +2149,12 @@ jobs:
                         )
                   },
 
+
                   ...projectData
                   .statuses
                   .map(
                     status => ({
+
                       label:
                         status,
 
@@ -1939,8 +2175,10 @@ jobs:
                             ),
                             status
                           )
+
                     })
                   ),
+
 
                   {
                     label:
@@ -1962,6 +2200,7 @@ jobs:
                           "closed"
                         )
                   }
+
                 ];
 
 
@@ -2017,10 +2256,6 @@ jobs:
               }
 
 
-              // ============================================
-              // Flow chart
-              // ============================================
-
               const flowChart =
                 new Chart(
                   document
@@ -2028,14 +2263,17 @@ jobs:
                     "flowChart"
                   ),
                   {
+
                     type:
                       "bar",
 
                     data: {
+
                       labels:
                         [],
 
                       datasets: [{
+
                         label:
                           "Issues",
 
@@ -2044,10 +2282,13 @@ jobs:
 
                         backgroundColor:
                           []
+
                       }]
+
                     },
 
                     options: {
+
                       responsive:
                         true,
 
@@ -2083,7 +2324,9 @@ jobs:
                             ];
 
 
-                          if (!descriptor) {
+                          if (
+                            !descriptor
+                          ) {
                             return;
                           }
 
@@ -2096,7 +2339,9 @@ jobs:
                           );
 
                         }
+
                     }
+
                   }
                 );
 
@@ -2121,10 +2366,12 @@ jobs:
                       "opened"
                   },
 
+
                   ...projectData
                   .statuses
                   .map(
                     status => ({
+
                       label:
                         status,
 
@@ -2137,8 +2384,10 @@ jobs:
 
                       highlight:
                         status
+
                     })
                   ),
+
 
                   {
                     label:
@@ -2162,20 +2411,25 @@ jobs:
                     descriptors;
 
 
-                flowChart.data.labels =
-                  descriptors.map(
-                    item =>
-                      item.label
-                  );
+                flowChart
+                  .data
+                  .labels =
+                    descriptors
+                    .map(
+                      item =>
+                        item.label
+                    );
 
 
                 flowChart
                   .data
                   .datasets[0]
                   .data =
-                    descriptors.map(
+                    descriptors
+                    .map(
                       item =>
-                        item.issues()
+                        item
+                        .issues()
                         .length
                     );
 
@@ -2184,7 +2438,9 @@ jobs:
                   "#2499e8",
                   "#49b94f",
                   "#177fc4",
-                  "#69c76f"
+                  "#69c76f",
+                  "#5bb5ee",
+                  "#359b3d"
                 ];
 
 
@@ -2192,7 +2448,8 @@ jobs:
                   .data
                   .datasets[0]
                   .backgroundColor =
-                    descriptors.map(
+                    descriptors
+                    .map(
                       (
                         item,
                         index
@@ -2210,10 +2467,6 @@ jobs:
               }
 
 
-              // ============================================
-              // Bugs vs enhancements
-              // ============================================
-
               const mixChart =
                 new Chart(
                   document
@@ -2221,16 +2474,19 @@ jobs:
                     "mixChart"
                   ),
                   {
+
                     type:
                       "doughnut",
 
                     data: {
+
                       labels: [
                         "Bugs",
                         "Enhancements"
                       ],
 
                       datasets: [{
+
                         data:
                           [],
 
@@ -2244,10 +2500,13 @@ jobs:
 
                         borderWidth:
                           2
+
                       }]
+
                     },
 
                     options: {
+
                       responsive:
                         true,
 
@@ -2285,9 +2544,8 @@ jobs:
 
 
                           openDrilldown(
-                            type
-                            ===
-                            "bug"
+
+                            type === "bug"
                             ?
                             "Bugs Worked On"
                             :
@@ -2299,10 +2557,13 @@ jobs:
                               sprint,
                               type
                             )
+
                           );
 
                         }
+
                     }
+
                   }
                 );
 
@@ -2334,10 +2595,6 @@ jobs:
               }
 
 
-              // ============================================
-              // Dynamic Priority table
-              // ============================================
-
               function renderPriorityTable(
                 sprint
               ) {
@@ -2354,13 +2611,21 @@ jobs:
 
 
                 const headers = [
+
                   "Priority",
+
                   "Opened",
+
                   ...projectData.statuses,
+
                   "Closed",
+
                   "Bug Opened",
+
                   "Bug Closed",
+
                   "Bug C/R"
+
                 ];
 
 
@@ -2373,12 +2638,15 @@ jobs:
                         "th"
                       );
 
+
                     th.textContent =
                       name;
 
-                    header.appendChild(
-                      th
-                    );
+
+                    header
+                      .appendChild(
+                        th
+                      );
 
                   }
                 );
@@ -2459,6 +2727,7 @@ jobs:
 
 
                       addMetricCell(
+
                         openedIssues(
                           sprint,
                           priority
@@ -2474,6 +2743,7 @@ jobs:
                             ),
                             "opened"
                           )
+
                       );
 
 
@@ -2491,6 +2761,7 @@ jobs:
 
 
                             addMetricCell(
+
                               issues.length,
 
                               () =>
@@ -2500,6 +2771,7 @@ jobs:
                                   issues,
                                   status
                                 )
+
                             );
 
                           }
@@ -2507,6 +2779,7 @@ jobs:
 
 
                       addMetricCell(
+
                         closedIssues(
                           sprint,
                           priority
@@ -2522,6 +2795,7 @@ jobs:
                             ),
                             "closed"
                           )
+
                       );
 
 
@@ -2533,6 +2807,7 @@ jobs:
 
 
                       addMetricCell(
+
                         bugsOpened.length,
 
                         () =>
@@ -2542,6 +2817,7 @@ jobs:
                             bugsOpened,
                             "opened"
                           )
+
                       );
 
 
@@ -2553,6 +2829,7 @@ jobs:
 
 
                       addMetricCell(
+
                         bugsClosed.length,
 
                         () =>
@@ -2562,6 +2839,7 @@ jobs:
                             bugsClosed,
                             "closed"
                           )
+
                       );
 
 
@@ -2576,8 +2854,10 @@ jobs:
                         bugsClosed.length
                         ===
                         0
+
                         ?
                         "—"
+
                         :
                         (
                           bugsOpened.length
@@ -2602,10 +2882,6 @@ jobs:
 
               }
 
-
-              // ============================================
-              // Dynamic drilldown
-              // ============================================
 
               function openDrilldown(
                 title,
@@ -2650,6 +2926,7 @@ jobs:
 
 
                 const columns = [
+
                   {
                     label:
                       "Issue",
@@ -2657,6 +2934,7 @@ jobs:
                     field:
                       null
                   },
+
                   {
                     label:
                       "Title",
@@ -2664,6 +2942,7 @@ jobs:
                     field:
                       null
                   },
+
                   {
                     label:
                       "Priority",
@@ -2671,6 +2950,7 @@ jobs:
                     field:
                       null
                   },
+
                   {
                     label:
                       "Type",
@@ -2678,6 +2958,7 @@ jobs:
                     field:
                       null
                   },
+
                   {
                     label:
                       "Open Date",
@@ -2685,17 +2966,21 @@ jobs:
                     field:
                       "opened"
                   },
-                  ...projectData
-                    .statuses
-                    .map(
-                      status => ({
-                        label:
-                          status,
 
-                        field:
-                          status
-                      })
-                    ),
+                  ...projectData
+                  .statuses
+                  .map(
+                    status => ({
+
+                      label:
+                        status,
+
+                      field:
+                        status
+
+                    })
+                  ),
+
                   {
                     label:
                       "Close Date",
@@ -2703,6 +2988,7 @@ jobs:
                     field:
                       "closed"
                   }
+
                 ];
 
 
@@ -2813,7 +3099,9 @@ jobs:
                           className;
 
 
-                        if (field) {
+                        if (
+                          field
+                        ) {
 
                           td.dataset.field =
                             field;
@@ -2842,6 +3130,7 @@ jobs:
 
 
                       addCell(
+
                         `
                         <a
                           class="issue-link"
@@ -2861,8 +3150,11 @@ jobs:
 
                         </a>
                         `,
+
                         null,
+
                         "issue-column"
+
                       );
 
 
@@ -2906,14 +3198,18 @@ jobs:
                           status => {
 
                             addCell(
+
                               renderDates(
                                 statusDates(
                                   issue,
                                   status
                                 )
                               ),
+
                               status,
+
                               "date-column"
+
                             );
 
                           }
@@ -3016,17 +3312,15 @@ jobs:
                 );
 
 
-              // ============================================
-              // Selected sprint
-              // ============================================
-
               function updateSprint() {
 
                 const sprint =
                   selectedSprint();
 
 
-                if (!sprint) {
+                if (
+                  !sprint
+                ) {
                   return;
                 }
 
@@ -3052,10 +3346,6 @@ jobs:
 
               }
 
-
-              // ============================================
-              // Project loader
-              // ============================================
 
               function loadProject(
                 project
@@ -3121,6 +3411,11 @@ jobs:
                       );
 
 
+                    /*
+                      Default to the sprint
+                      containing today's date.
+                    */
+
                     const today =
                       new Date()
                       .toISOString()
@@ -3134,12 +3429,10 @@ jobs:
                       data.sprints
                       .findIndex(
                         sprint =>
-                          today
-                          >=
+                          today >=
                           sprint.start
                           &&
-                          today
-                          <=
+                          today <=
                           sprint.end
                       );
 
@@ -3164,10 +3457,6 @@ jobs:
 
               }
 
-
-              // ============================================
-              // Projects
-              // ============================================
 
               fetch(
                 "data/projects.json"

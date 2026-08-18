@@ -16,7 +16,9 @@ concurrency:
   group: github-pages
   cancel-in-progress: true
 
+
 jobs:
+
   build:
     runs-on: ubuntu-latest
 
@@ -24,39 +26,53 @@ jobs:
       ORG: ${{ github.repository_owner }}
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
+
       - name: Generate GitHub App token
         id: app-token
+
         uses: actions/create-github-app-token@v3
+
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
           private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+
       - name: Build dashboard data
+
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
         shell: bash
+
         run: |
+
           set -euo pipefail
 
           mkdir -p site/data
 
+
           python3 <<'PY'
+
           import json
           import os
           import re
           import subprocess
+
           from datetime import datetime, timedelta
           from pathlib import Path
 
 
           ORG = os.environ["ORG"]
+
 
           SPRINT_PATTERN = re.compile(
               r"<!--\s*sprint-tracker:\s*(.*?)\s*->\s*(.*?)\s*-->",
@@ -64,7 +80,12 @@ jobs:
           )
 
 
+          # ==================================================
+          # Command helpers
+          # ==================================================
+
           def run_json(cmd):
+
               result = subprocess.run(
                   cmd,
                   check=True,
@@ -72,11 +93,20 @@ jobs:
                   text=True,
               )
 
-              return json.loads(result.stdout)
+              return json.loads(
+                  result.stdout
+              )
 
 
-          def graphql(query, variables=None):
-              variables = variables or {}
+          def graphql(
+              query,
+              variables=None,
+          ):
+
+              variables = (
+                  variables
+                  or {}
+              )
 
               cmd = [
                   "gh",
@@ -86,20 +116,35 @@ jobs:
                   f"query={query}",
               ]
 
-              for key, value in variables.items():
+
+              for key, value in (
+                  variables.items()
+              ):
+
                   if value is not None:
+
                       cmd.extend([
                           "-F",
                           f"{key}={value}",
                       ])
 
-              return run_json(cmd)
 
+              return run_json(
+                  cmd
+              )
+
+
+          # ==================================================
+          # GraphQL
+          # ==================================================
 
           PROJECTS_QUERY = """
           query($org: String!) {
+
             organization(login: $org) {
+
               projectsV2(first: 100) {
+
                 nodes {
                   number
                   title
@@ -107,8 +152,11 @@ jobs:
                   closed
                   url
                 }
+
               }
+
             }
+
           }
           """
 
@@ -119,36 +167,51 @@ jobs:
             $number: Int!,
             $cursor: String
           ) {
+
             organization(login: $org) {
+
               projectV2(number: $number) {
+
                 number
                 title
                 shortDescription
                 url
 
+
                 fields(first: 100) {
+
                   nodes {
+
                     __typename
 
+
                     ... on ProjectV2Field {
+
                       name
                       dataType
+
                     }
 
+
                     ... on ProjectV2SingleSelectField {
+
                       name
                       dataType
 
                       options {
                         name
                       }
+
                     }
 
+
                     ... on ProjectV2IterationField {
+
                       name
                       dataType
 
                       configuration {
+
                         iterations {
                           title
                           startDate
@@ -160,26 +223,38 @@ jobs:
                           startDate
                           duration
                         }
+
                       }
+
                     }
+
                   }
+
                 }
+
 
                 items(
                   first: 100,
                   after: $cursor
                 ) {
+
                   pageInfo {
                     hasNextPage
                     endCursor
                   }
 
+
                   nodes {
+
                     fieldValues(first: 100) {
+
                       nodes {
+
                         __typename
 
+
                         ... on ProjectV2ItemFieldSingleSelectValue {
+
                           name
 
                           field {
@@ -187,9 +262,12 @@ jobs:
                               name
                             }
                           }
+
                         }
 
+
                         ... on ProjectV2ItemFieldNumberValue {
+
                           number
 
                           field {
@@ -197,9 +275,12 @@ jobs:
                               name
                             }
                           }
+
                         }
 
+
                         ... on ProjectV2ItemFieldIterationValue {
+
                           title
                           startDate
                           duration
@@ -209,9 +290,12 @@ jobs:
                               name
                             }
                           }
+
                         }
 
+
                         ... on ProjectV2ItemFieldDateValue {
+
                           date
 
                           field {
@@ -219,9 +303,12 @@ jobs:
                               name
                             }
                           }
+
                         }
 
+
                         ... on ProjectV2ItemFieldTextValue {
+
                           text
 
                           field {
@@ -229,12 +316,18 @@ jobs:
                               name
                             }
                           }
+
                         }
+
                       }
+
                     }
 
+
                     content {
+
                       ... on Issue {
+
                         number
                         title
                         state
@@ -242,33 +335,51 @@ jobs:
                         closedAt
                         url
 
+
                         repository {
                           nameWithOwner
                         }
+
 
                         issueType {
                           name
                         }
 
+
                         issueFieldValues(first: 30) {
+
                           nodes {
+
                             ... on IssueFieldSingleSelectValue {
+
                               name
 
                               field {
+
                                 ... on IssueFieldSingleSelect {
                                   name
                                 }
+
                               }
+
                             }
+
                           }
+
                         }
+
                       }
+
                     }
+
                   }
+
                 }
+
               }
+
             }
+
           }
           """
 
@@ -279,19 +390,25 @@ jobs:
             $repo: String!,
             $number: Int!
           ) {
+
             repository(
               owner: $owner,
               name: $repo
             ) {
+
               issue(number: $number) {
+
                 timelineItems(
                   first: 250,
                   itemTypes: [
                     PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
                   ]
                 ) {
+
                   nodes {
+
                     ... on ProjectV2ItemStatusChangedEvent {
+
                       createdAt
                       previousStatus
                       status
@@ -299,20 +416,34 @@ jobs:
                       project {
                         number
                       }
+
                     }
+
                   }
+
                 }
+
               }
+
             }
+
           }
           """
 
 
+          # ==================================================
+          # Field helpers
+          # ==================================================
+
           def normalize(value):
+
               return re.sub(
                   r"[^a-z0-9]+",
                   " ",
-                  str(value or "").lower(),
+                  str(
+                      value
+                      or ""
+                  ).lower(),
               ).strip()
 
 
@@ -321,32 +452,51 @@ jobs:
               aliases,
               data_type=None,
           ):
+
               aliases = {
                   normalize(alias)
                   for alias in aliases
               }
 
+
               for field in fields:
-                  if normalize(
-                      field.get("name")
-                  ) not in aliases:
+
+                  if (
+                      normalize(
+                          field.get(
+                              "name"
+                          )
+                      )
+                      not in aliases
+                  ):
+
                       continue
+
 
                   if (
                       data_type
                       and
-                      field.get("dataType")
-                      != data_type
+                      field.get(
+                          "dataType"
+                      )
+                      !=
+                      data_type
                   ):
+
                       continue
 
+
                   return field
+
 
               return None
 
 
-          def find_sprint_field(fields):
-              result = find_field(
+          def find_sprint_field(
+              fields
+          ):
+
+              field = find_field(
                   fields,
                   [
                       "Sprint",
@@ -355,101 +505,210 @@ jobs:
                   "ITERATION",
               )
 
-              if result:
-                  return result
 
-              for field in fields:
-                  if field.get("dataType") == "ITERATION":
-                      return field
+              if field:
+
+                  return field
+
+
+              for candidate in fields:
+
+                  if (
+                      candidate.get(
+                          "dataType"
+                      )
+                      ==
+                      "ITERATION"
+                  ):
+
+                      return candidate
+
 
               return None
 
 
           def project_values(item):
+
               output = {}
+
 
               for value in (
                   item
-                  .get("fieldValues", {})
-                  .get("nodes", [])
+                  .get(
+                      "fieldValues",
+                      {},
+                  )
+                  .get(
+                      "nodes",
+                      [],
+                  )
               ):
-                  field = value.get("field") or {}
-                  name = field.get("name")
+
+                  field = (
+                      value.get(
+                          "field"
+                      )
+                      or {}
+                  )
+
+                  name = field.get(
+                      "name"
+                  )
+
 
                   if not name:
+
                       continue
 
-                  typename = value.get("__typename")
+
+                  typename = (
+                      value.get(
+                          "__typename"
+                      )
+                  )
+
 
                   if (
                       typename
                       ==
                       "ProjectV2ItemFieldSingleSelectValue"
                   ):
-                      output[name] = value.get("name")
+
+                      output[name] = (
+                          value.get(
+                              "name"
+                          )
+                      )
+
 
                   elif (
                       typename
                       ==
                       "ProjectV2ItemFieldNumberValue"
                   ):
-                      output[name] = value.get("number")
+
+                      output[name] = (
+                          value.get(
+                              "number"
+                          )
+                      )
+
 
                   elif (
                       typename
                       ==
                       "ProjectV2ItemFieldIterationValue"
                   ):
-                      output[name] = value.get("title")
+
+                      output[name] = (
+                          value.get(
+                              "title"
+                          )
+                      )
+
 
                   elif (
                       typename
                       ==
                       "ProjectV2ItemFieldDateValue"
                   ):
-                      output[name] = value.get("date")
+
+                      output[name] = (
+                          value.get(
+                              "date"
+                          )
+                      )
+
 
                   elif (
                       typename
                       ==
                       "ProjectV2ItemFieldTextValue"
                   ):
-                      output[name] = value.get("text")
+
+                      output[name] = (
+                          value.get(
+                              "text"
+                          )
+                      )
+
 
               return output
 
 
           def issue_values(issue):
+
               output = {}
+
 
               for value in (
                   issue
-                  .get("issueFieldValues", {})
-                  .get("nodes", [])
+                  .get(
+                      "issueFieldValues",
+                      {},
+                  )
+                  .get(
+                      "nodes",
+                      [],
+                  )
               ):
-                  field = value.get("field") or {}
-                  name = field.get("name")
+
+                  field = (
+                      value.get(
+                          "field"
+                      )
+                      or {}
+                  )
+
+                  name = field.get(
+                      "name"
+                  )
+
 
                   if not name:
+
                       continue
 
-                  output[name] = value.get("name")
+
+                  output[name] = (
+                      value.get(
+                          "name"
+                      )
+                  )
+
 
               return output
 
 
-          def semantic_value(values, aliases):
+          def semantic_value(
+              values,
+              aliases,
+          ):
+
               aliases = {
                   normalize(alias)
                   for alias in aliases
               }
 
-              for name, value in values.items():
-                  if normalize(name) in aliases:
+
+              for name, value in (
+                  values.items()
+              ):
+
+                  if (
+                      normalize(name)
+                      in aliases
+                  ):
+
                       return value
+
 
               return None
 
+
+          # ==================================================
+          # GitHub issue history
+          # ==================================================
 
           status_cache = {}
           comment_cache = {}
@@ -459,39 +718,82 @@ jobs:
               repository,
               number,
           ):
-              key = f"{repository}#{number}"
+
+              key = (
+                  f"{repository}"
+                  f"#{number}"
+              )
+
 
               if key in status_cache:
-                  return status_cache[key]
 
-              owner, repo = repository.split("/", 1)
+                  return status_cache[
+                      key
+                  ]
+
+
+              owner, repo = (
+                  repository.split(
+                      "/",
+                      1,
+                  )
+              )
+
 
               result = graphql(
                   STATUS_QUERY,
                   {
-                      "owner": owner,
-                      "repo": repo,
-                      "number": number,
+                      "owner":
+                          owner,
+
+                      "repo":
+                          repo,
+
+                      "number":
+                          number,
                   },
               )
 
+
               issue = (
                   result
-                  .get("data", {})
-                  .get("repository", {})
-                  .get("issue")
+                  .get(
+                      "data",
+                      {},
+                  )
+                  .get(
+                      "repository",
+                      {},
+                  )
+                  .get(
+                      "issue"
+                  )
               )
 
-              if not issue:
-                  nodes = []
-              else:
+
+              if issue:
+
                   nodes = (
                       issue
-                      .get("timelineItems", {})
-                      .get("nodes", [])
+                      .get(
+                          "timelineItems",
+                          {},
+                      )
+                      .get(
+                          "nodes",
+                          [],
+                      )
                   )
 
-              status_cache[key] = nodes
+              else:
+
+                  nodes = []
+
+
+              status_cache[key] = (
+                  nodes
+              )
+
 
               return nodes
 
@@ -500,90 +802,205 @@ jobs:
               repository,
               number,
           ):
-              key = f"{repository}#{number}"
+
+              key = (
+                  f"{repository}"
+                  f"#{number}"
+              )
+
 
               if key in comment_cache:
-                  return comment_cache[key]
 
-              # Sprint tracker creates very few comments per
-              # issue, so 100 is sufficient for this tracker
-              # history in the normal case.
-              comments = run_json([
-                  "gh",
-                  "api",
-                  f"repos/{repository}/issues/{number}/comments",
-                  "-f",
-                  "per_page=100",
-              ])
+                  return comment_cache[
+                      key
+                  ]
 
-              comment_cache[key] = comments
+
+              # IMPORTANT:
+              #
+              # Explicit GET is required because passing -f
+              # parameters can otherwise make gh api choose
+              # POST automatically.
+              #
+              # --paginate makes historical tracking safe if
+              # an issue eventually exceeds 100 comments.
+
+              result = subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      "--method",
+                      "GET",
+                      "--paginate",
+                      "--slurp",
+                      f"repos/{repository}/issues/{number}/comments",
+                      "-f",
+                      "per_page=100",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+
+
+              pages = json.loads(
+                  result.stdout
+              )
+
+
+              comments = []
+
+
+              for page in pages:
+
+                  if isinstance(
+                      page,
+                      list,
+                  ):
+
+                      comments.extend(
+                          page
+                      )
+
+
+              comment_cache[key] = (
+                  comments
+              )
+
 
               return comments
 
 
-          def parse_sprint_transitions(comments):
+          def parse_sprint_transitions(
+              comments
+          ):
+
               transitions = []
 
+
               for comment in comments:
-                  body = comment.get("body") or ""
-                  created_at = comment.get("created_at")
+
+                  body = (
+                      comment.get(
+                          "body"
+                      )
+                      or ""
+                  )
+
+
+                  created_at = (
+                      comment.get(
+                          "created_at"
+                      )
+                  )
+
 
                   if not created_at:
+
                       continue
 
-                  for match in SPRINT_PATTERN.finditer(body):
+
+                  for match in (
+                      SPRINT_PATTERN
+                      .finditer(
+                          body
+                      )
+                  ):
+
                       transitions.append({
+
                           "from":
-                              match.group(1).strip(),
+                              match
+                              .group(1)
+                              .strip(),
 
                           "to":
-                              match.group(2).strip(),
+                              match
+                              .group(2)
+                              .strip(),
 
                           "date":
-                              created_at[:10],
+                              created_at[
+                                  :10
+                              ],
 
                           "createdAt":
                               created_at,
+
                       })
+
 
               transitions.sort(
                   key=lambda event:
-                      event["createdAt"]
+                      event[
+                          "createdAt"
+                      ]
               )
+
 
               return transitions
 
 
+          # ==================================================
+          # Discover Projects
+          # ==================================================
+
           projects_result = graphql(
               PROJECTS_QUERY,
               {
-                  "org": ORG,
+                  "org":
+                      ORG,
               },
           )
 
+
           projects = [
+
               project
+
               for project in (
-                  projects_result["data"]
-                  ["organization"]
-                  ["projectsV2"]
-                  ["nodes"]
+                  projects_result[
+                      "data"
+                  ][
+                      "organization"
+                  ][
+                      "projectsV2"
+                  ][
+                      "nodes"
+                  ]
               )
-              if not project["closed"]
+
+              if not project[
+                  "closed"
+              ]
+
           ]
 
+
           print(
-              f"Found {len(projects)} open projects"
+              f"Found "
+              f"{len(projects)} "
+              f"open projects"
           )
 
 
+          # ==================================================
+          # Build one project
+          # ==================================================
+
           def load_project(project):
+
               cursor = None
+
               raw_items = []
+
               raw_field_nodes = []
+
               metadata = None
 
+
               while True:
+
                   result = graphql(
                       PROJECT_QUERY,
                       {
@@ -591,26 +1008,40 @@ jobs:
                               ORG,
 
                           "number":
-                              project["number"],
+                              project[
+                                  "number"
+                              ],
 
                           "cursor":
                               cursor,
                       },
                   )
 
+
                   pv2 = (
-                      result["data"]
-                      ["organization"]
-                      ["projectV2"]
+                      result[
+                          "data"
+                      ][
+                          "organization"
+                      ][
+                          "projectV2"
+                      ]
                   )
 
+
                   if metadata is None:
+
                       metadata = {
+
                           "number":
-                              pv2["number"],
+                              pv2[
+                                  "number"
+                              ],
 
                           "title":
-                              pv2["title"],
+                              pv2[
+                                  "title"
+                              ],
 
                           "description":
                               (
@@ -621,63 +1052,116 @@ jobs:
                               ),
 
                           "url":
-                              pv2["url"],
+                              pv2[
+                                  "url"
+                              ],
+
                       }
 
+
                       raw_field_nodes = (
-                          pv2["fields"]["nodes"]
+                          pv2[
+                              "fields"
+                          ][
+                              "nodes"
+                          ]
                       )
 
-                  connection = pv2["items"]
+
+                  connection = (
+                      pv2[
+                          "items"
+                      ]
+                  )
+
 
                   raw_items.extend(
-                      connection["nodes"]
+                      connection[
+                          "nodes"
+                      ]
                   )
+
 
                   if not (
-                      connection["pageInfo"]
-                      ["hasNextPage"]
+                      connection[
+                          "pageInfo"
+                      ][
+                          "hasNextPage"
+                      ]
                   ):
+
                       break
 
+
                   cursor = (
-                      connection["pageInfo"]
-                      ["endCursor"]
+                      connection[
+                          "pageInfo"
+                      ][
+                          "endCursor"
+                      ]
                   )
 
+
+              # ==============================================
+              # Project fields
+              # ==============================================
 
               fields = []
 
-              for raw in raw_field_nodes:
+
+              for raw in (
+                  raw_field_nodes
+              ):
+
                   fields.append({
+
                       "name":
-                          raw.get("name"),
+                          raw.get(
+                              "name"
+                          ),
 
                       "dataType":
-                          raw.get("dataType"),
+                          raw.get(
+                              "dataType"
+                          ),
 
                       "kind":
-                          raw.get("__typename"),
+                          raw.get(
+                              "__typename"
+                          ),
 
-                      "options": [
-                          option["name"]
-                          for option in raw.get(
-                              "options",
-                              [],
-                          )
-                      ],
+                      "options":
+                          [
+                              option[
+                                  "name"
+                              ]
+
+                              for option in (
+                                  raw.get(
+                                      "options",
+                                      [],
+                                  )
+                              )
+                          ],
+
                   })
 
 
               status_field = find_field(
                   fields,
-                  ["Status"],
+                  [
+                      "Status",
+                  ],
                   "SINGLE_SELECT",
               )
 
-              sprint_field = find_sprint_field(
-                  fields
+
+              sprint_field = (
+                  find_sprint_field(
+                      fields
+                  )
               )
+
 
               priority_field = find_field(
                   fields,
@@ -687,6 +1171,7 @@ jobs:
                   ],
                   "SINGLE_SELECT",
               )
+
 
               size_field = find_field(
                   fields,
@@ -700,6 +1185,7 @@ jobs:
                   "SINGLE_SELECT",
               )
 
+
               loe_field = find_field(
                   fields,
                   [
@@ -712,29 +1198,47 @@ jobs:
               )
 
 
+              # ==============================================
+              # Sprint definitions
+              # ==============================================
+
               sprints = {}
 
+
               if sprint_field:
+
                   raw_sprint_field = next(
                       (
                           raw
-                          for raw in raw_field_nodes
+
+                          for raw in (
+                              raw_field_nodes
+                          )
+
                           if (
-                              raw.get("name")
+                              raw.get(
+                                  "name"
+                              )
                               ==
-                              sprint_field["name"]
+                              sprint_field[
+                                  "name"
+                              ]
                           )
                       ),
                       None,
                   )
 
+
                   if raw_sprint_field:
+
                       config = (
-                          raw_sprint_field.get(
+                          raw_sprint_field
+                          .get(
                               "configuration"
                           )
                           or {}
                       )
+
 
                       iterations = (
                           config.get(
@@ -748,26 +1252,50 @@ jobs:
                           )
                       )
 
-                      for sprint in iterations:
-                          start = sprint["startDate"]
-                          duration = int(
-                              sprint["duration"]
+
+                      for sprint in (
+                          iterations
+                      ):
+
+                          start = (
+                              sprint[
+                                  "startDate"
+                              ]
                           )
+
+
+                          duration = int(
+                              sprint[
+                                  "duration"
+                              ]
+                          )
+
 
                           end = (
                               datetime
-                              .fromisoformat(start)
+                              .fromisoformat(
+                                  start
+                              )
                               +
                               timedelta(
-                                  days=duration - 1
+                                  days=
+                                      duration
+                                      -
+                                      1
                               )
                           ).date().isoformat()
 
+
                           sprints[
-                              sprint["title"]
+                              sprint[
+                                  "title"
+                              ]
                           ] = {
+
                               "name":
-                                  sprint["title"],
+                                  sprint[
+                                      "title"
+                                  ],
 
                               "start":
                                   start,
@@ -777,38 +1305,77 @@ jobs:
 
                               "duration":
                                   duration,
+
                           }
 
 
+              # ==============================================
+              # Issues
+              # ==============================================
+
               issues = []
+
               observed_priorities = set()
+
               observed_sizes = set()
 
-              for item in raw_items:
-                  issue = item.get("content")
+
+              for item in (
+                  raw_items
+              ):
+
+                  issue = (
+                      item.get(
+                          "content"
+                      )
+                  )
+
 
                   if (
                       not issue
                       or
-                      not issue.get("number")
+                      not issue.get(
+                          "number"
+                      )
                   ):
+
                       continue
+
 
                   repository = (
                       issue
-                      .get("repository", {})
-                      .get("nameWithOwner")
+                      .get(
+                          "repository",
+                          {},
+                      )
+                      .get(
+                          "nameWithOwner"
+                      )
                   )
 
+
                   if not repository:
+
                       continue
 
-                  pv = project_values(item)
-                  iv = issue_values(issue)
+
+                  pv = (
+                      project_values(
+                          item
+                      )
+                  )
 
 
-                  # Priority:
-                  # issue-level value first, project field fallback.
+                  iv = (
+                      issue_values(
+                          issue
+                      )
+                  )
+
+
+                  # ------------------------------------------
+                  # Priority
+                  # ------------------------------------------
 
                   priority = semantic_value(
                       iv,
@@ -818,7 +1385,9 @@ jobs:
                       ],
                   )
 
+
                   if priority is None:
+
                       priority = semantic_value(
                           pv,
                           [
@@ -827,13 +1396,24 @@ jobs:
                           ],
                       )
 
+
                   if priority is None:
-                      priority = "Unspecified"
+
+                      priority = (
+                          "Unspecified"
+                      )
+
 
                   observed_priorities.add(
-                      str(priority)
+                      str(
+                          priority
+                      )
                   )
 
+
+                  # ------------------------------------------
+                  # Size
+                  # ------------------------------------------
 
                   size = semantic_value(
                       pv,
@@ -846,11 +1426,17 @@ jobs:
                       ],
                   )
 
+
                   if size is not None:
+
                       observed_sizes.add(
                           str(size)
                       )
 
+
+                  # ------------------------------------------
+                  # LOE
+                  # ------------------------------------------
 
                   loe = semantic_value(
                       pv,
@@ -863,29 +1449,51 @@ jobs:
                   )
 
 
+                  # ------------------------------------------
+                  # Current Sprint
+                  #
+                  # Debug / validation only.
+                  # Historical KPIs do NOT use this value.
+                  # ------------------------------------------
+
                   current_sprint = None
 
+
                   if sprint_field:
-                      current_sprint = pv.get(
-                          sprint_field["name"]
+
+                      current_sprint = (
+                          pv.get(
+                              sprint_field[
+                                  "name"
+                              ]
+                          )
                       )
 
 
                   issues.append({
+
                       "number":
-                          issue["number"],
+                          issue[
+                              "number"
+                          ],
 
                       "repository":
                           repository,
 
                       "title":
-                          issue["title"],
+                          issue[
+                              "title"
+                          ],
 
                       "url":
-                          issue["url"],
+                          issue[
+                              "url"
+                          ],
 
                       "state":
-                          issue["state"],
+                          issue[
+                              "state"
+                          ],
 
                       "issueType":
                           (
@@ -895,7 +1503,9 @@ jobs:
                                   )
                                   or {}
                               )
-                              .get("name")
+                              .get(
+                                  "name"
+                              )
                               or
                               "Unspecified"
                           ),
@@ -909,18 +1519,28 @@ jobs:
                       "loe":
                           loe,
 
-                      # Debug/reference only.
-                      # Historical KPI logic does not use this.
                       "currentSprint":
                           current_sprint,
 
                       "opened":
-                          issue["createdAt"][:10],
+                          issue[
+                              "createdAt"
+                          ][
+                              :10
+                          ],
 
                       "closed":
                           (
-                              issue["closedAt"][:10]
-                              if issue["closedAt"]
+                              issue[
+                                  "closedAt"
+                              ][
+                                  :10
+                              ]
+
+                              if issue[
+                                  "closedAt"
+                              ]
+
                               else None
                           ),
 
@@ -929,81 +1549,127 @@ jobs:
 
                       "sprintTransitions":
                           [],
+
                   })
 
+
+              # ==============================================
+              # Historical events
+              # ==============================================
 
               for index, issue in enumerate(
                   issues,
                   start=1,
               ):
+
                   print(
-                      f'Project {project["number"]}: '
+                      f'Project '
+                      f'{project["number"]}: '
                       f'[{index}/{len(issues)}] '
                       f'{issue["repository"]}'
                       f'#{issue["number"]} '
-                      f'Priority={issue["priority"]} '
+                      f'Priority='
+                      f'{issue["priority"]} '
                       f'CurrentSprint='
                       f'{issue["currentSprint"]}'
                   )
 
+
                   try:
+
                       status_nodes = (
                           get_status_events(
-                              issue["repository"],
-                              issue["number"],
+                              issue[
+                                  "repository"
+                              ],
+                              issue[
+                                  "number"
+                              ],
                           )
                       )
 
-                      for event in status_nodes:
+
+                      for event in (
+                          status_nodes
+                      ):
+
                           event_project = (
-                              event.get("project")
+                              event.get(
+                                  "project"
+                              )
                               or {}
                           )
+
 
                           if (
                               event_project.get(
                                   "number"
                               )
                               !=
-                              project["number"]
+                              project[
+                                  "number"
+                              ]
                           ):
+
                               continue
 
-                          status = event.get(
-                              "status"
+
+                          status = (
+                              event.get(
+                                  "status"
+                              )
                           )
 
-                          created_at = event.get(
-                              "createdAt"
+
+                          created_at = (
+                              event.get(
+                                  "createdAt"
+                              )
                           )
+
 
                           if (
                               not status
                               or
                               not created_at
                           ):
+
                               continue
+
 
                           issue[
                               "statusEvents"
                           ].append({
+
                               "status":
                                   status,
 
                               "date":
-                                  created_at[:10],
+                                  created_at[
+                                      :10
+                                  ],
+
                           })
 
 
-                      comments = get_issue_comments(
-                          issue["repository"],
-                          issue["number"],
+                      comments = (
+                          get_issue_comments(
+                              issue[
+                                  "repository"
+                              ],
+                              issue[
+                                  "number"
+                              ],
+                          )
                       )
+
 
                       issue[
                           "sprintTransitions"
-                      ] = parse_sprint_transitions(
-                          comments
+                      ] = (
+                          parse_sprint_transitions(
+                              comments
+                          )
                       )
 
 
@@ -1011,18 +1677,27 @@ jobs:
                           "statusEvents"
                       ].sort(
                           key=lambda event:
-                              event["date"]
+                              event[
+                                  "date"
+                              ]
                       )
 
 
                       print(
-                          "  sprint transitions:",
+                          "  Sprint history:",
                           [
                               (
-                                  event["from"],
-                                  event["to"],
-                                  event["date"],
+                                  event[
+                                      "from"
+                                  ],
+                                  event[
+                                      "to"
+                                  ],
+                                  event[
+                                      "date"
+                                  ],
                               )
+
                               for event in (
                                   issue[
                                       "sprintTransitions"
@@ -1033,17 +1708,24 @@ jobs:
 
 
                   except Exception as exc:
+
                       print(
-                          f'Warning reading '
+                          f'WARNING '
                           f'{issue["repository"]}'
                           f'#{issue["number"]}: '
                           f'{exc}'
                       )
 
 
+              # ==============================================
+              # Status list
+              # ==============================================
+
               statuses = []
 
+
               if status_field:
+
                   statuses.extend(
                       status_field.get(
                           "options",
@@ -1051,17 +1733,37 @@ jobs:
                       )
                   )
 
+
               for issue in issues:
+
                   for event in (
-                      issue["statusEvents"]
+                      issue[
+                          "statusEvents"
+                      ]
                   ):
-                      status = event["status"]
 
-                      if status not in statuses:
-                          statuses.append(status)
+                      status = (
+                          event[
+                              "status"
+                          ]
+                      )
 
 
-              preferred_priority_order = [
+                      if (
+                          status
+                          not in statuses
+                      ):
+
+                          statuses.append(
+                              status
+                          )
+
+
+              # ==============================================
+              # Priority list
+              # ==============================================
+
+              preferred_order = [
                   "PROD Critical",
                   "P0",
                   "P1",
@@ -1070,40 +1772,70 @@ jobs:
                   "P4",
               ]
 
+
               project_priority_options = []
 
+
               if priority_field:
+
                   project_priority_options = (
-                      priority_field.get(
+                      priority_field
+                      .get(
                           "options",
                           [],
                       )
                   )
 
+
               all_priorities = (
-                  set(project_priority_options)
+                  set(
+                      project_priority_options
+                  )
                   |
                   observed_priorities
               )
 
+
               priorities = []
 
+
               for priority in (
-                  preferred_priority_order
+                  preferred_order
               ):
-                  if priority in all_priorities:
-                      priorities.append(priority)
+
+                  if (
+                      priority
+                      in all_priorities
+                  ):
+
+                      priorities.append(
+                          priority
+                      )
+
 
               for priority in sorted(
                   all_priorities
               ):
-                  if priority not in priorities:
-                      priorities.append(priority)
 
+                  if (
+                      priority
+                      not in priorities
+                  ):
+
+                      priorities.append(
+                          priority
+                      )
+
+
+              # ==============================================
+              # Size list
+              # ==============================================
 
               sizes = []
 
+
               if size_field:
+
                   sizes.extend(
                       size_field.get(
                           "options",
@@ -1111,31 +1843,50 @@ jobs:
                       )
                   )
 
+
               for size in sorted(
                   observed_sizes
               ):
-                  if size not in sizes:
-                      sizes.append(size)
 
+                  if size not in sizes:
+
+                      sizes.append(
+                          size
+                      )
+
+
+              # ==============================================
+              # Capabilities
+              # ==============================================
 
               capabilities = {
+
                   "status": {
                       "available":
-                          bool(statuses),
+                          bool(
+                              statuses
+                          ),
                   },
 
                   "sprint": {
                       "available":
-                          bool(sprints),
+                          bool(
+                              sprints
+                          ),
                   },
 
                   "priority": {
                       "available":
                           any(
-                              issue["priority"]
+                              issue[
+                                  "priority"
+                              ]
                               !=
                               "Unspecified"
-                              for issue in issues
+
+                              for issue in (
+                                  issues
+                              )
                           ),
                   },
 
@@ -1158,16 +1909,23 @@ jobs:
                               is not None
                               or
                               any(
-                                  issue["loe"]
+                                  issue[
+                                      "loe"
+                                  ]
                                   is not None
-                                  for issue in issues
+
+                                  for issue in (
+                                      issues
+                                  )
                               )
                           ),
                   },
+
               }
 
 
               return {
+
                   "project":
                       metadata,
 
@@ -1181,7 +1939,9 @@ jobs:
                       sorted(
                           sprints.values(),
                           key=lambda sprint:
-                              sprint["start"],
+                              sprint[
+                                  "start"
+                              ],
                       ),
 
                   "statuses":
@@ -1195,20 +1955,33 @@ jobs:
 
                   "issues":
                       issues,
+
               }
 
 
+          # ==================================================
+          # Write data
+          # ==================================================
+
           project_index = []
 
-          for project in projects:
-              data = load_project(project)
 
-              slug = (
-                  f'project-{project["number"]}'
+          for project in projects:
+
+              data = load_project(
+                  project
               )
 
+
+              slug = (
+                  f'project-'
+                  f'{project["number"]}'
+              )
+
+
               Path(
-                  f"site/data/{slug}.json"
+                  f"site/data/"
+                  f"{slug}.json"
               ).write_text(
                   json.dumps(
                       data,
@@ -1216,12 +1989,18 @@ jobs:
                   )
               )
 
+
               project_index.append({
+
                   "number":
-                      project["number"],
+                      project[
+                          "number"
+                      ],
 
                   "title":
-                      project["title"],
+                      project[
+                          "title"
+                      ],
 
                   "description":
                       (
@@ -1235,10 +2014,17 @@ jobs:
                       slug,
 
                   "issueCount":
-                      len(data["issues"]),
+                      len(
+                          data[
+                              "issues"
+                          ]
+                      ),
 
                   "capabilities":
-                      data["capabilities"],
+                      data[
+                          "capabilities"
+                      ],
+
               })
 
 
@@ -1253,7 +2039,9 @@ jobs:
 
 
           print("")
-          print("Generated projects:")
+          print(
+              "Generated projects:"
+          )
 
           print(
               json.dumps(
@@ -1266,9 +2054,13 @@ jobs:
 
 
       - name: Create Sprint Analytics dashboard
+
         shell: bash
+
         run: |
+
           cat > site/index.html <<'EOF'
+
           <!doctype html>
 
           <html lang="en">
@@ -1297,44 +2089,76 @@ jobs:
               content="0"
             >
 
+
             <title>
               Sprint Analytics
             </title>
+
 
             <script
               src="https://cdn.jsdelivr.net/npm/chart.js">
             </script>
 
+
             <style>
 
               :root {
-                --blue: #2499e8;
-                --blue-deep: #0f5f98;
-                --blue-light: #eaf6fd;
-                --green: #49b94f;
-                --navy: #172033;
-                --text: #172033;
-                --muted: #667085;
-                --border: #d7e0e7;
-                --page-bg: #f4f6f8;
+
+                --blue:
+                  #2499e8;
+
+                --blue-deep:
+                  #0f5f98;
+
+                --blue-light:
+                  #eaf6fd;
+
+                --green:
+                  #49b94f;
+
+                --navy:
+                  #172033;
+
+                --text:
+                  #172033;
+
+                --muted:
+                  #667085;
+
+                --border:
+                  #d7e0e7;
+
+                --page-bg:
+                  #f4f6f8;
+
               }
 
 
               * {
-                box-sizing: border-box;
+                box-sizing:
+                  border-box;
               }
 
 
               html,
               body {
-                width: 100%;
-                min-height: 100%;
-                margin: 0;
+
+                width:
+                  100%;
+
+                min-height:
+                  100%;
+
+                margin:
+                  0;
+
               }
 
 
               body {
-                overflow-x: hidden;
+
+                overflow-x:
+                  hidden;
 
                 background:
                   var(--page-bg);
@@ -1349,22 +2173,29 @@ jobs:
                   BlinkMacSystemFont,
                   "Segoe UI",
                   sans-serif;
+
               }
 
 
               main {
-                width: 100%;
-                max-width: 1600px;
+
+                width:
+                  100%;
+
+                max-width:
+                  1600px;
 
                 margin:
                   0 auto;
 
                 padding:
                   0 32px 50px;
+
               }
 
 
               h1 {
+
                 margin:
                   0 -32px;
 
@@ -1382,10 +2213,12 @@ jobs:
 
                 font-weight:
                   800;
+
               }
 
 
               .toolbar {
+
                 display:
                   flex;
 
@@ -1404,10 +2237,12 @@ jobs:
                 border-bottom:
                   1px solid
                   var(--border);
+
               }
 
 
               select {
+
                 min-width:
                   240px;
 
@@ -1429,16 +2264,20 @@ jobs:
 
                 font-weight:
                   700;
+
               }
 
 
               .section {
+
                 margin-bottom:
                   36px;
+
               }
 
 
               .section-header {
+
                 margin-bottom:
                   14px;
 
@@ -1448,10 +2287,12 @@ jobs:
                 border-bottom:
                   1px solid
                   var(--border);
+
               }
 
 
               .section-header h2 {
+
                 margin:
                   0;
 
@@ -1460,22 +2301,12 @@ jobs:
 
                 font-size:
                   20px;
-              }
 
-
-              .section-header p {
-                margin:
-                  5px 0 0;
-
-                color:
-                  var(--muted);
-
-                font-size:
-                  12px;
               }
 
 
               .kpis {
+
                 display:
                   grid;
 
@@ -1483,7 +2314,7 @@ jobs:
                   repeat(
                     auto-fit,
                     minmax(
-                      150px,
+                      145px,
                       1fr
                     )
                   );
@@ -1493,10 +2324,12 @@ jobs:
 
                 margin-bottom:
                   16px;
+
               }
 
 
               .card {
+
                 min-width:
                   0;
 
@@ -1521,16 +2354,20 @@ jobs:
                     51,
                     .07
                   );
+
               }
 
 
               .clickable {
+
                 cursor:
                   pointer;
+
               }
 
 
               .clickable:hover {
+
                 box-shadow:
                   0 8px 22px
                   rgba(
@@ -1539,10 +2376,12 @@ jobs:
                     51,
                     .13
                   );
+
               }
 
 
               .label {
+
                 color:
                   #586577;
 
@@ -1557,10 +2396,12 @@ jobs:
 
                 letter-spacing:
                   .045em;
+
               }
 
 
               .number {
+
                 margin-top:
                   6px;
 
@@ -1572,10 +2413,12 @@ jobs:
 
                 font-weight:
                   800;
+
               }
 
 
               .subnumber {
+
                 margin-top:
                   5px;
 
@@ -1584,10 +2427,12 @@ jobs:
 
                 font-size:
                   12px;
+
               }
 
 
               .status-row {
+
                 display:
                   flex;
 
@@ -1599,10 +2444,12 @@ jobs:
 
                 margin:
                   4px 0 18px;
+
               }
 
 
               .status-chip {
+
                 padding:
                   7px 11px;
 
@@ -1624,35 +2471,47 @@ jobs:
 
                 cursor:
                   pointer;
+
               }
 
 
               .status-chip strong {
+
                 margin-left:
                   6px;
 
                 color:
                   var(--blue-deep);
+
               }
 
 
               .grid-two {
+
                 display:
                   grid;
 
                 grid-template-columns:
-                  minmax(0, 2fr)
-                  minmax(320px, 1fr);
+                  minmax(
+                    0,
+                    2fr
+                  )
+                  minmax(
+                    320px,
+                    1fr
+                  );
 
                 gap:
                   18px;
 
                 margin-bottom:
                   18px;
+
               }
 
 
               .chart {
+
                 position:
                   relative;
 
@@ -1661,10 +2520,12 @@ jobs:
 
                 height:
                   330px;
+
               }
 
 
               .chart canvas {
+
                 display:
                   block;
 
@@ -1676,38 +2537,46 @@ jobs:
 
                 height:
                   100% !important;
+
               }
 
 
               h3 {
+
                 margin:
                   0 0 16px;
 
                 color:
                   var(--navy);
+
               }
 
 
               .table-wrap {
+
                 width:
                   100%;
 
                 overflow-x:
                   auto;
+
               }
 
 
               table {
+
                 width:
                   100%;
 
                 border-collapse:
                   collapse;
+
               }
 
 
               th,
               td {
+
                 padding:
                   11px;
 
@@ -1723,10 +2592,12 @@ jobs:
 
                 white-space:
                   nowrap;
+
               }
 
 
               th {
+
                 background:
                   var(--blue-light);
 
@@ -1741,17 +2612,21 @@ jobs:
 
                 text-transform:
                   uppercase;
+
               }
 
 
               th:first-child,
               td:first-child {
+
                 text-align:
                   left;
+
               }
 
 
               .metric-cell {
+
                 color:
                   var(--blue-deep);
 
@@ -1766,16 +2641,20 @@ jobs:
 
                 cursor:
                   pointer;
+
               }
 
 
               .hidden {
+
                 display:
                   none !important;
+
               }
 
 
               .modal-backdrop {
+
                 position:
                   fixed;
 
@@ -1804,10 +2683,12 @@ jobs:
                     42,
                     .58
                   );
+
               }
 
 
               .modal {
+
                 width:
                   min(
                     98vw,
@@ -1825,10 +2706,12 @@ jobs:
 
                 border-radius:
                   16px;
+
               }
 
 
               .modal-header {
+
                 display:
                   flex;
 
@@ -1846,16 +2729,20 @@ jobs:
 
                 color:
                   #ffffff;
+
               }
 
 
               .modal-header h2 {
+
                 margin:
                   0 0 4px;
+
               }
 
 
               .modal-subtitle {
+
                 font-size:
                   12px;
 
@@ -1866,10 +2753,12 @@ jobs:
                     255,
                     .84
                   );
+
               }
 
 
               .close-button {
+
                 border:
                   0;
 
@@ -1884,28 +2773,34 @@ jobs:
 
                 cursor:
                   pointer;
+
               }
 
 
               .modal-body {
+
                 max-height:
                   78vh;
 
                 overflow:
                   auto;
+
               }
 
 
               .drilldown-table {
+
                 width:
                   max-content;
 
                 min-width:
                   100%;
+
               }
 
 
               .drilldown-table th {
+
                 position:
                   sticky;
 
@@ -1914,10 +2809,12 @@ jobs:
 
                 z-index:
                   4;
+
               }
 
 
               .issue-link {
+
                 color:
                   var(--blue-deep);
 
@@ -1926,10 +2823,12 @@ jobs:
 
                 font-weight:
                   750;
+
               }
 
 
               .title-column {
+
                 min-width:
                   280px;
 
@@ -1941,44 +2840,60 @@ jobs:
 
                 text-align:
                   left;
+
               }
 
 
-              @media(max-width:900px) {
+              @media(
+                max-width:900px
+              ) {
 
                 main {
+
                   padding:
                     0 18px 30px;
+
                 }
 
 
                 h1 {
+
                   margin:
                     0 -18px;
+
                 }
 
 
                 .toolbar {
+
                   margin:
                     0 -18px 24px;
 
                   padding:
                     15px 18px;
+
                 }
 
 
                 .grid-two {
+
                   grid-template-columns:
-                    minmax(0, 1fr);
+                    minmax(
+                      0,
+                      1fr
+                    );
+
                 }
 
 
                 select {
+
                   width:
                     100%;
 
                   min-width:
                     0;
+
                 }
 
               }
@@ -1991,6 +2906,7 @@ jobs:
           <body>
 
             <main>
+
 
               <h1>
                 Sprint Analytics
@@ -2009,6 +2925,10 @@ jobs:
 
               </div>
 
+
+              <!-- ========================================
+                   OVERVIEW
+                   ======================================== -->
 
               <section class="section">
 
@@ -2034,6 +2954,7 @@ jobs:
 
 
                 <div class="grid-two">
+
 
                   <div class="card">
 
@@ -2068,6 +2989,7 @@ jobs:
 
                   </div>
 
+
                 </div>
 
 
@@ -2079,15 +3001,19 @@ jobs:
                     Flow by Priority
                   </h3>
 
+
                   <div class="table-wrap">
 
                     <table>
 
                       <thead>
+
                         <tr
                           id="priorityHeader">
                         </tr>
+
                       </thead>
+
 
                       <tbody
                         id="priorityRows">
@@ -2101,6 +3027,10 @@ jobs:
 
               </section>
 
+
+              <!-- ========================================
+                   QUALITY
+                   ======================================== -->
 
               <section class="section">
 
@@ -2127,6 +3057,7 @@ jobs:
                     Bugs by Priority
                   </h3>
 
+
                   <div class="table-wrap">
 
                     <table>
@@ -2134,6 +3065,7 @@ jobs:
                       <thead>
 
                         <tr>
+
                           <th>
                             Priority
                           </th>
@@ -2149,9 +3081,11 @@ jobs:
                           <th>
                             C/R
                           </th>
+
                         </tr>
 
                       </thead>
+
 
                       <tbody
                         id="qualityPriorityRows">
@@ -2165,14 +3099,20 @@ jobs:
 
               </section>
 
+
             </main>
 
+
+            <!-- ==========================================
+                 DRILLDOWN
+                 ========================================== -->
 
             <div
               id="drilldownBackdrop"
               class="modal-backdrop hidden">
 
               <div class="modal">
+
 
                 <div class="modal-header">
 
@@ -2208,18 +3148,22 @@ jobs:
                     class="drilldown-table">
 
                     <thead>
+
                       <tr
                         id="drilldownHeader">
                       </tr>
+
                     </thead>
+
 
                     <tbody
                       id="drilldownRows">
-                      </tbody>
+                    </tbody>
 
                   </table>
 
                 </div>
+
 
               </div>
 
@@ -2237,6 +3181,7 @@ jobs:
 
 
               const TYPE_COLORS = [
+
                 "#2499e8",
                 "#49b94f",
                 "#0f5f98",
@@ -2249,8 +3194,13 @@ jobs:
                 "#36566f",
                 "#5ab5ef",
                 "#72c879"
+
               ];
 
+
+              // ===========================================
+              // Basic helpers
+              // ===========================================
 
               function escapeHtml(value) {
 
@@ -2328,6 +3278,13 @@ jobs:
 
               function selectedSprint() {
 
+                if (!projectData) {
+
+                  return null;
+
+                }
+
+
                 const index =
                   Number(
                     document
@@ -2340,7 +3297,7 @@ jobs:
 
                 return (
                   projectData
-                  ?.sprints[index]
+                  .sprints[index]
                   ||
                   null
                 );
@@ -2433,7 +3390,9 @@ jobs:
               }
 
 
-              function sumLoe(issues) {
+              function sumLoe(
+                issues
+              ) {
 
                 return issues.reduce(
                   (
@@ -2441,7 +3400,7 @@ jobs:
                     issue
                   ) => {
 
-                    const number =
+                    const value =
                       Number(
                         issue.loe
                       );
@@ -2452,10 +3411,10 @@ jobs:
                       +
                       (
                         Number.isFinite(
-                          number
+                          value
                         )
                         ?
-                        number
+                        value
                         :
                         0
                       )
@@ -2468,10 +3427,24 @@ jobs:
               }
 
 
-              function formatDays(value) {
+              function formatDays(
+                value
+              ) {
+
+                const numeric =
+                  Number(value);
+
 
                 return (
-                  Number(value)
+                  (
+                    Number.isFinite(
+                      numeric
+                    )
+                    ?
+                    numeric
+                    :
+                    0
+                  )
                   .toFixed(1)
                   .replace(
                     /\.0$/,
@@ -2484,20 +3457,26 @@ jobs:
               }
 
 
-              // ==========================================
-              // Historical sprint reconstruction
-              // ==========================================
+              // ===========================================
+              // Sprint history
+              // ===========================================
 
-              function transitions(issue) {
+              function transitions(
+                issue
+              ) {
 
                 return (
-                  issue.sprintTransitions
+                  issue
+                  .sprintTransitions
                   ||
                   []
                 )
                 .slice()
                 .sort(
-                  (a,b) =>
+                  (
+                    a,
+                    b
+                  ) =>
                     String(
                       a.createdAt
                       ||
@@ -2515,7 +3494,9 @@ jobs:
               }
 
 
-              function isBacklog(value) {
+              function isBacklog(
+                value
+              ) {
 
                 return (
                   String(
@@ -2532,7 +3513,9 @@ jobs:
               }
 
 
-              function isSprint(value) {
+              function isSprint(
+                value
+              ) {
 
                 return /^sprint\b/i
                   .test(
@@ -2610,17 +3593,89 @@ jobs:
               }
 
 
+              // ===========================================
+              // Sprint-scope KPIs
+              //
+              // IMPORTANT:
+              //
+              // These overlap intentionally.
+              //
+              // COMMITTED:
+              //   Ever entered this Sprint.
+              //
+              // CARRIED OVER:
+              //   Committed + entered from another Sprint.
+              //
+              // ADDED LATE:
+              //   Committed + first recorded entry was after
+              //   the day-one tracker grace period.
+              //
+              // REMOVED:
+              //   Committed + later left this Sprint.
+              // ===========================================
+
+              function committedIssues(
+                sprint
+              ) {
+
+                return projectData
+                  .issues
+                  .filter(
+                    issue =>
+                      Boolean(
+                        firstEntry(
+                          issue,
+                          sprint
+                        )
+                      )
+                  );
+
+              }
+
+
+              function carriedOverIssues(
+                sprint
+              ) {
+
+                return committedIssues(
+                  sprint
+                )
+                .filter(
+                  issue => {
+
+                    const entry =
+                      firstEntry(
+                        issue,
+                        sprint
+                      );
+
+
+                    return Boolean(
+                      entry
+                      &&
+                      isSprint(
+                        entry.from
+                      )
+                      &&
+                      entry.from
+                      !==
+                      sprint.name
+                    );
+
+                  }
+                );
+
+              }
+
+
               /*
-               * The tracker runs once per day.
+               * Tracker runs once daily.
                *
-               * An issue changed on the first sprint day
-               * may therefore receive its comment on day 2.
-               *
-               * We give it one calendar day of observation
-               * grace before calling it late.
+               * Sprint day 1 can therefore be observed
+               * on the following day.
                */
 
-              function commitmentCutoff(
+              function lateCutoff(
                 sprint
               ) {
 
@@ -2632,111 +3687,39 @@ jobs:
               }
 
 
-              function committedIssues(
-                sprint
-              ) {
-
-                const cutoff =
-                  commitmentCutoff(
-                    sprint
-                  );
-
-
-                return projectData
-                  .issues
-                  .filter(
-                    issue => {
-
-                      const entry =
-                        firstEntry(
-                          issue,
-                          sprint
-                        );
-
-
-                      return Boolean(
-                        entry
-                        &&
-                        entry.date
-                        <=
-                        cutoff
-                      );
-
-                    }
-                  );
-
-              }
-
-
-              function carriedOverIssues(
-                sprint
-              ) {
-
-                return projectData
-                  .issues
-                  .filter(
-                    issue => {
-
-                      const entry =
-                        firstEntry(
-                          issue,
-                          sprint
-                        );
-
-
-                      if (!entry) {
-                        return false;
-                      }
-
-
-                      return (
-                        isSprint(
-                          entry.from
-                        )
-                        &&
-                        entry.from
-                        !==
-                        sprint.name
-                      );
-
-                    }
-                  );
-
-              }
-
-
               function addedLateIssues(
                 sprint
               ) {
 
                 const cutoff =
-                  commitmentCutoff(
+                  lateCutoff(
                     sprint
                   );
 
 
-                return projectData
-                  .issues
-                  .filter(
-                    issue => {
+                return committedIssues(
+                  sprint
+                )
+                .filter(
+                  issue => {
 
-                      const entry =
-                        firstEntry(
-                          issue,
-                          sprint
-                        );
-
-
-                      return Boolean(
-                        entry
-                        &&
-                        entry.date
-                        >
-                        cutoff
+                    const entry =
+                      firstEntry(
+                        issue,
+                        sprint
                       );
 
-                    }
-                  );
+
+                    return Boolean(
+                      entry
+                      &&
+                      entry.date
+                      >
+                      cutoff
+                    );
+
+                  }
+                );
 
               }
 
@@ -2745,44 +3728,47 @@ jobs:
                 sprint
               ) {
 
-                return projectData
-                  .issues
-                  .filter(
-                    issue => {
+                return committedIssues(
+                  sprint
+                )
+                .filter(
+                  issue => {
 
-                      const entry =
-                        firstEntry(
-                          issue,
-                          sprint
-                        );
-
-
-                      if (!entry) {
-                        return false;
-                      }
-
-
-                      return exitsFromSprint(
+                    const entry =
+                      firstEntry(
                         issue,
                         sprint
-                      )
-                      .some(
-                        exit =>
-                          String(
-                            exit.createdAt
-                            ||
-                            exit.date
-                          )
-                          >
-                          String(
-                            entry.createdAt
-                            ||
-                            entry.date
-                          )
                       );
 
+
+                    if (!entry) {
+
+                      return false;
+
                     }
-                  );
+
+
+                    return exitsFromSprint(
+                      issue,
+                      sprint
+                    )
+                    .some(
+                      exit =>
+                        String(
+                          exit.createdAt
+                          ||
+                          exit.date
+                        )
+                        >
+                        String(
+                          entry.createdAt
+                          ||
+                          entry.date
+                        )
+                    );
+
+                  }
+                );
 
               }
 
@@ -2800,33 +3786,20 @@ jobs:
 
 
                 if (!entry) {
+
                   return "";
+
                 }
 
 
-                const cutoff =
-                  commitmentCutoff(
-                    sprint
-                  );
-
-
-                if (
-                  entry.date
-                  >
-                  cutoff
-                ) {
-
-                  return (
-                    isSprint(
-                      entry.from
+                const late =
+                  (
+                    entry.date
+                    >
+                    lateCutoff(
+                      sprint
                     )
-                    ?
-                    "Late Carryover"
-                    :
-                    "Added Late"
                   );
-
-                }
 
 
                 if (
@@ -2835,12 +3808,24 @@ jobs:
                   )
                 ) {
 
-                  return "Carryover";
+                  return (
+                    late
+                    ?
+                    "Late Carryover"
+                    :
+                    "Carryover"
+                  );
 
                 }
 
 
-                return "Committed";
+                return (
+                  late
+                  ?
+                  "Added Late"
+                  :
+                  "Committed"
+                );
 
               }
 
@@ -2875,9 +3860,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // General sprint metrics
-              // ==========================================
+              // ===========================================
+              // Open / Closed
+              // ===========================================
 
               function openedIssues(
                 sprint,
@@ -2935,35 +3920,18 @@ jobs:
               }
 
 
-              function sprintScopeIssues(
+              function completedCommittedIssues(
                 sprint
               ) {
 
-                return projectData
-                  .issues
-                  .filter(
-                    issue =>
-                      Boolean(
-                        firstEntry(
-                          issue,
-                          sprint
-                        )
-                      )
-                  );
-
-              }
-
-
-              function completedScopeIssues(
-                sprint
-              ) {
-
-                const scopeIds =
+                const ids =
                   new Set(
-                    sprintScopeIssues(
+                    committedIssues(
                       sprint
                     )
-                    .map(issueId)
+                    .map(
+                      issueId
+                    )
                   );
 
 
@@ -2972,7 +3940,7 @@ jobs:
                 )
                 .filter(
                   issue =>
-                    scopeIds.has(
+                    ids.has(
                       issueId(issue)
                     )
                 );
@@ -2984,23 +3952,25 @@ jobs:
                 sprint
               ) {
 
-                const scope =
-                  sprintScopeIssues(
+                const committed =
+                  committedIssues(
                     sprint
                   );
 
 
-                if (!scope.length) {
+                if (!committed.length) {
+
                   return 0;
+
                 }
 
 
                 return (
-                  completedScopeIssues(
+                  completedCommittedIssues(
                     sprint
                   ).length
                   /
-                  scope.length
+                  committed.length
                   *
                   100
                 );
@@ -3008,9 +3978,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // Status
-              // ==========================================
+              // ===========================================
+              // Status flow
+              // ===========================================
 
               function statusIssues(
                 sprint,
@@ -3086,7 +4056,7 @@ jobs:
                   new Set();
 
 
-                sprintScopeIssues(
+                committedIssues(
                   sprint
                 )
                 .forEach(
@@ -3156,7 +4126,13 @@ jobs:
               }
 
 
-              function isBug(issue) {
+              // ===========================================
+              // Bug metrics
+              // ===========================================
+
+              function isBug(
+                issue
+              ) {
 
                 return (
                   String(
@@ -3204,9 +4180,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // KPI rendering
-              // ==========================================
+              // ===========================================
+              // KPI helper
+              // ===========================================
 
               function addKpi(
                 container,
@@ -3288,6 +4264,10 @@ jobs:
               }
 
 
+              // ===========================================
+              // Overview
+              // ===========================================
+
               function renderOverview(
                 sprint
               ) {
@@ -3302,6 +4282,12 @@ jobs:
                   "";
 
 
+                const opened =
+                  openedIssues(
+                    sprint
+                  );
+
+
                 const committed =
                   committedIssues(
                     sprint
@@ -3314,7 +4300,7 @@ jobs:
                   );
 
 
-                const added =
+                const late =
                   addedLateIssues(
                     sprint
                   );
@@ -3330,6 +4316,14 @@ jobs:
                   closedIssues(
                     sprint
                   );
+
+
+                addKpi(
+                  container,
+                  "Opened",
+                  opened.length,
+                  opened
+                );
 
 
                 addKpi(
@@ -3369,13 +4363,13 @@ jobs:
                 addKpi(
                   container,
                   "Added Late",
-                  added.length,
-                  added,
+                  late.length,
+                  late,
                   cap("loe")
                   ?
                   `${formatDays(
                     sumLoe(
-                      added
+                      late
                     )
                   )} LOE`
                   :
@@ -3417,13 +4411,16 @@ jobs:
                   sprint
                 );
 
+
                 renderFlow(
                   sprint
                 );
 
+
                 renderType(
                   sprint
                 );
+
 
                 renderPriority(
                   sprint
@@ -3431,6 +4428,10 @@ jobs:
 
               }
 
+
+              // ===========================================
+              // Small Status pills
+              // ===========================================
 
               function renderStatuses(
                 sprint
@@ -3458,18 +4459,18 @@ jobs:
                         );
 
 
-                      const chip =
+                      const button =
                         document
                         .createElement(
                           "button"
                         );
 
 
-                      chip.className =
+                      button.className =
                         "status-chip";
 
 
-                      chip.innerHTML = `
+                      button.innerHTML = `
 
                         ${
                           escapeHtml(
@@ -3486,7 +4487,7 @@ jobs:
                       `;
 
 
-                      chip.onclick =
+                      button.onclick =
                         () =>
                           openDrilldown(
                             status,
@@ -3496,7 +4497,7 @@ jobs:
 
 
                       row.appendChild(
-                        chip
+                        button
                       );
 
                     }
@@ -3505,9 +4506,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // Flow chart
-              // ==========================================
+              // ===========================================
+              // Sprint Flow
+              // ===========================================
 
               const flowChart =
                 new Chart(
@@ -3567,20 +4568,26 @@ jobs:
                         if (
                           !elements.length
                         ) {
+
                           return;
+
                         }
 
 
                         const descriptor =
                           flowChart
                           ._descriptors[
-                            elements[0]
+                            elements[
+                              0
+                            ]
                             .index
                           ];
 
 
                         if (!descriptor) {
+
                           return;
+
                         }
 
 
@@ -3652,7 +4659,8 @@ jobs:
                 flowChart
                   .data
                   .labels =
-                    descriptors.map(
+                    descriptors
+                    .map(
                       item =>
                         item.label
                     );
@@ -3662,9 +4670,12 @@ jobs:
                   .data
                   .datasets[0]
                   .data =
-                    descriptors.map(
+                    descriptors
+                    .map(
                       item =>
-                        item.issues.length
+                        item
+                        .issues
+                        .length
                     );
 
 
@@ -3673,9 +4684,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // Type doughnut
-              // ==========================================
+              // ===========================================
+              // Work by Type
+              // ===========================================
 
               const typeChart =
                 new Chart(
@@ -3756,21 +4767,25 @@ jobs:
                         if (
                           !elements.length
                         ) {
+
                           return;
+
                         }
+
+
+                        const sprint =
+                          selectedSprint();
 
 
                         const type =
                           typeChart
                           .data
                           .labels[
-                            elements[0]
+                            elements[
+                              0
+                            ]
                             .index
                           ];
-
-
-                        const sprint =
-                          selectedSprint();
 
 
                         const issues =
@@ -3818,9 +4833,11 @@ jobs:
                   issue => {
 
                     const type =
-                      issue.issueType
-                      ||
-                      "Unspecified";
+                      (
+                        issue.issueType
+                        ||
+                        "Unspecified"
+                      );
 
 
                     counts[type] =
@@ -3836,33 +4853,38 @@ jobs:
                 );
 
 
-                const breakdown =
+                const values =
                   Object
                   .entries(
                     counts
                   )
                   .sort(
-                    (a,b) =>
+                    (
+                      a,
+                      b
+                    ) =>
                       b[1]
                       -
                       a[1]
                   );
 
 
-                typeChart.data.labels =
-                  breakdown.map(
-                    item =>
-                      item[0]
-                  );
+                typeChart
+                  .data
+                  .labels =
+                    values.map(
+                      value =>
+                        value[0]
+                    );
 
 
                 typeChart
                   .data
                   .datasets[0]
                   .data =
-                    breakdown.map(
-                      item =>
-                        item[1]
+                    values.map(
+                      value =>
+                        value[1]
                     );
 
 
@@ -3870,15 +4892,16 @@ jobs:
                   .data
                   .datasets[0]
                   .backgroundColor =
-                    breakdown.map(
+                    values.map(
                       (
-                        item,
+                        value,
                         index
                       ) =>
                         TYPE_COLORS[
                           index
                           %
-                          TYPE_COLORS.length
+                          TYPE_COLORS
+                          .length
                         ]
                     );
 
@@ -3888,9 +4911,9 @@ jobs:
               }
 
 
-              // ==========================================
-              // Priority
-              // ==========================================
+              // ===========================================
+              // Flow by Priority
+              // ===========================================
 
               function renderPriority(
                 sprint
@@ -3903,12 +4926,18 @@ jobs:
 
 
                 const priorities =
-                  projectData
-                  .priorities
+                  (
+                    projectData
+                    .priorities
+                    ||
+                    []
+                  )
                   .filter(Boolean);
 
 
-                if (!priorities.length) {
+                if (
+                  !priorities.length
+                ) {
 
                   card.classList.add(
                     "hidden"
@@ -4002,7 +5031,7 @@ jobs:
                     );
 
 
-                    function metric(
+                    function addMetric(
                       issues,
                       label
                     ) {
@@ -4038,7 +5067,7 @@ jobs:
                     }
 
 
-                    metric(
+                    addMetric(
                       openedIssues(
                         sprint,
                         priority
@@ -4052,7 +5081,7 @@ jobs:
                       .forEach(
                         status => {
 
-                          metric(
+                          addMetric(
                             statusIssues(
                               sprint,
                               status,
@@ -4065,7 +5094,7 @@ jobs:
                       );
 
 
-                    metric(
+                    addMetric(
                       closedIssues(
                         sprint,
                         priority
@@ -4084,9 +5113,9 @@ jobs:
               }
 
 
-              // ==========================================
+              // ===========================================
               // Quality
-              // ==========================================
+              // ===========================================
 
               function renderQuality(
                 sprint
@@ -4223,14 +5252,14 @@ jobs:
                         );
 
 
-                      const priorityCell =
+                      const first =
                         document
                         .createElement(
                           "td"
                         );
 
 
-                      priorityCell.innerHTML =
+                      first.innerHTML =
                         `<strong>${
                           escapeHtml(
                             priority
@@ -4239,11 +5268,11 @@ jobs:
 
 
                       row.appendChild(
-                        priorityCell
+                        first
                       );
 
 
-                      function cell(
+                      function addCell(
                         value,
                         issues = null
                       ) {
@@ -4283,19 +5312,19 @@ jobs:
                       }
 
 
-                      cell(
+                      addCell(
                         opened.length,
                         opened
                       );
 
 
-                      cell(
+                      addCell(
                         closed.length,
                         closed
                       );
 
 
-                      cell(
+                      addCell(
                         closed.length
                         ?
                         (
@@ -4321,9 +5350,9 @@ jobs:
               }
 
 
-              // ==========================================
+              // ===========================================
               // Drilldown
-              // ==========================================
+              // ===========================================
 
               function openDrilldown(
                 title,
@@ -4331,28 +5360,34 @@ jobs:
                 issues
               ) {
 
-                document.getElementById(
-                  "drilldownTitle"
-                ).textContent =
-                  title;
+                document
+                  .getElementById(
+                    "drilldownTitle"
+                  )
+                  .textContent =
+                    title;
 
 
-                document.getElementById(
-                  "drilldownSubtitle"
-                ).textContent =
-                  (
-                    `${sprint.name} · `
-                    +
-                    `${issues.length} issue`
-                    +
+                document
+                  .getElementById(
+                    "drilldownSubtitle"
+                  )
+                  .textContent =
                     (
-                      issues.length === 1
-                      ?
-                      ""
-                      :
-                      "s"
-                    )
-                  );
+                      `${sprint.name} · `
+                      +
+                      `${issues.length} issue`
+                      +
+                      (
+                        issues.length
+                        ===
+                        1
+                        ?
+                        ""
+                        :
+                        "s"
+                      )
+                    );
 
 
                 const columns = [
@@ -4664,74 +5699,84 @@ jobs:
                 );
 
 
-                document.getElementById(
-                  "drilldownBackdrop"
-                )
-                .classList
-                .remove(
-                  "hidden"
-                );
+                document
+                  .getElementById(
+                    "drilldownBackdrop"
+                  )
+                  .classList
+                  .remove(
+                    "hidden"
+                  );
 
               }
 
 
               function closeDrilldown() {
 
-                document.getElementById(
-                  "drilldownBackdrop"
-                )
-                .classList
-                .add(
-                  "hidden"
-                );
+                document
+                  .getElementById(
+                    "drilldownBackdrop"
+                  )
+                  .classList
+                  .add(
+                    "hidden"
+                  );
 
               }
 
 
-              document.getElementById(
-                "closeDrilldown"
-              ).onclick =
-                closeDrilldown;
+              document
+                .getElementById(
+                  "closeDrilldown"
+                )
+                .onclick =
+                  closeDrilldown;
 
 
-              document.getElementById(
-                "drilldownBackdrop"
-              )
-              .addEventListener(
-                "click",
-                event => {
+              document
+                .getElementById(
+                  "drilldownBackdrop"
+                )
+                .addEventListener(
+                  "click",
+                  event => {
 
-                  if (
-                    event.target.id
-                    ===
-                    "drilldownBackdrop"
-                  ) {
+                    if (
+                      event.target.id
+                      ===
+                      "drilldownBackdrop"
+                    ) {
 
-                    closeDrilldown();
+                      closeDrilldown();
 
-                  }
-
-                }
-              );
-
-
-              document.addEventListener(
-                "keydown",
-                event => {
-
-                  if (
-                    event.key
-                    ===
-                    "Escape"
-                  ) {
-
-                    closeDrilldown();
+                    }
 
                   }
+                );
 
-                }
-              );
 
+              document
+                .addEventListener(
+                  "keydown",
+                  event => {
+
+                    if (
+                      event.key
+                      ===
+                      "Escape"
+                    ) {
+
+                      closeDrilldown();
+
+                    }
+
+                  }
+                );
+
+
+              // ===========================================
+              // Render
+              // ===========================================
 
               function renderAll() {
 
@@ -4740,7 +5785,9 @@ jobs:
 
 
                 if (!sprint) {
+
                   return;
+
                 }
 
 
@@ -4756,7 +5803,13 @@ jobs:
               }
 
 
-              function loadProject(project) {
+              // ===========================================
+              // Project loading
+              // ===========================================
+
+              function loadProject(
+                project
+              ) {
 
                 fetch(
                   `data/${project.slug}.json?v=${cacheVersion}`,
@@ -4767,8 +5820,20 @@ jobs:
                 )
 
                 .then(
-                  response =>
-                    response.json()
+                  response => {
+
+                    if (!response.ok) {
+
+                      throw new Error(
+                        "Could not load project data."
+                      );
+
+                    }
+
+
+                    return response.json();
+
+                  }
                 )
 
                 .then(
@@ -4788,40 +5853,41 @@ jobs:
                       "";
 
 
-                    data.sprints.forEach(
-                      (
-                        sprint,
-                        index
-                      ) => {
+                    data.sprints
+                      .forEach(
+                        (
+                          sprint,
+                          index
+                        ) => {
 
-                        const option =
-                          document
-                          .createElement(
-                            "option"
-                          );
-
-
-                        option.value =
-                          index;
+                          const option =
+                            document
+                            .createElement(
+                              "option"
+                            );
 
 
-                        option.textContent =
-                          (
-                            `${sprint.name} · `
-                            +
-                            `${sprint.start} – `
-                            +
-                            `${sprint.end}`
-                          );
+                          option.value =
+                            index;
 
 
-                        sprintSelect
-                          .appendChild(
-                            option
-                          );
+                          option.textContent =
+                            (
+                              `${sprint.name} · `
+                              +
+                              `${sprint.start} – `
+                              +
+                              `${sprint.end}`
+                            );
 
-                      }
-                    );
+
+                          sprintSelect
+                            .appendChild(
+                              option
+                            );
+
+                        }
+                      );
 
 
                     const today =
@@ -4832,15 +5898,21 @@ jobs:
                       data.sprints
                       .findIndex(
                         sprint =>
-                          today >=
+                          today
+                          >=
                           sprint.start
                           &&
-                          today <=
+                          today
+                          <=
                           sprint.end
                       );
 
 
-                    if (current < 0) {
+                    if (
+                      current
+                      <
+                      0
+                    ) {
 
                       current =
                         Math.max(
@@ -4864,6 +5936,10 @@ jobs:
 
               }
 
+
+              // ===========================================
+              // Bootstrap
+              // ===========================================
 
               fetch(
                 `data/projects.json?v=${cacheVersion}`,
@@ -4920,7 +5996,9 @@ jobs:
                   );
 
 
-                  if (projects.length) {
+                  if (
+                    projects.length
+                  ) {
 
                     loadProject(
                       projects[0]
@@ -4948,14 +6026,19 @@ jobs:
               );
 
 
-              document.getElementById(
-                "sprintSelect"
-              )
-              .addEventListener(
-                "change",
-                renderAll
-              );
+              document
+                .getElementById(
+                  "sprintSelect"
+                )
+                .addEventListener(
+                  "change",
+                  renderAll
+                );
 
+
+              // ===========================================
+              // Resize
+              // ===========================================
 
               let resizeTimer =
                 null;
@@ -4989,30 +6072,41 @@ jobs:
           </body>
 
           </html>
+
           EOF
 
 
-      - name: Verify dashboard and history
+      - name: Verify dashboard and sprint history
+
         shell: bash
+
         run: |
+
           set -euo pipefail
+
 
           echo "Checking dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
+          grep -q "Opened" site/index.html
+          grep -q "Committed" site/index.html
           grep -q "Carried Over" site/index.html
           grep -q "Added Late" site/index.html
+          grep -q "Removed" site/index.html
           grep -q "Flow by Priority" site/index.html
           grep -q "Work by Type" site/index.html
           grep -q "Bugs by Priority" site/index.html
 
+
           echo
           echo "Sprint history sanity check:"
+
 
           python3 <<'PY'
 
           import glob
           import json
+
 
           for filename in glob.glob(
               "site/data/project-*.json"
@@ -5030,26 +6124,36 @@ jobs:
               print()
               print(
                   filename,
-                  data["project"]["title"]
+                  "-",
+                  data["project"]["title"],
               )
+
 
               print(
                   "Priorities:",
                   data.get(
                       "priorities"
-                  )
+                  ),
               )
 
+
               tracked = [
+
                   issue
-                  for issue in data.get(
-                      "issues",
-                      []
+
+                  for issue in (
+                      data.get(
+                          "issues",
+                          []
+                      )
                   )
+
                   if issue.get(
                       "sprintTransitions"
                   )
+
               ]
+
 
               print(
                   "Issues with sprint history:",
@@ -5060,26 +6164,37 @@ jobs:
                           "issues",
                           []
                       )
-                  )
+                  ),
               )
 
-              for issue in tracked[:10]:
+
+              for issue in tracked[:15]:
 
                   print(
                       f'  #{issue["number"]} '
-                      f'{issue["priority"]}:',
+                      f'priority='
+                      f'{issue["priority"]} '
+                      f'current='
+                      f'{issue["currentSprint"]}:',
                       [
                           (
-                              transition["from"],
-                              transition["to"],
-                              transition["date"],
+                              transition[
+                                  "from"
+                              ],
+                              transition[
+                                  "to"
+                              ],
+                              transition[
+                                  "date"
+                              ],
                           )
+
                           for transition in (
                               issue[
                                   "sprintTransitions"
                               ]
                           )
-                      ]
+                      ],
                   )
 
           PY
@@ -5087,11 +6202,13 @@ jobs:
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
+
         with:
           path: ./site
 
 
   deploy:
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -5102,6 +6219,7 @@ jobs:
       build
 
     steps:
+
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4

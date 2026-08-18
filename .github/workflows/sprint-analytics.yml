@@ -47,6 +47,7 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import re
           import subprocess
           from datetime import datetime, timedelta
           from pathlib import Path
@@ -60,6 +61,11 @@ jobs:
               "P3",
               "P4",
           ]
+
+          SPRINT_PATTERN = re.compile(
+              r"<!--\s*sprint-tracker:\s*(.*?)\s*->\s*(.*?)\s*-->",
+              re.IGNORECASE,
+          )
 
 
           def graphql(query, variables=None):
@@ -102,25 +108,6 @@ jobs:
             }
           }
           """
-
-          result = graphql(
-              PROJECTS_QUERY,
-              {"org": ORG},
-          )
-
-          projects = [
-              p
-              for p in (
-                  result["data"]
-                  ["organization"]
-                  ["projectsV2"]
-                  ["nodes"]
-              )
-              if not p["closed"]
-          ]
-
-          print(f"Found {len(projects)} open projects")
-
 
           PROJECT_QUERY = """
           query(
@@ -181,18 +168,6 @@ jobs:
                             }
                           }
                         }
-
-                        ... on ProjectV2ItemFieldIterationValue {
-                          title
-                          startDate
-                          duration
-
-                          field {
-                            ... on ProjectV2FieldCommon {
-                              name
-                            }
-                          }
-                        }
                       }
                     }
 
@@ -235,7 +210,6 @@ jobs:
           }
           """
 
-
           TIMELINE_QUERY = """
           query(
             $owner: String!,
@@ -250,10 +224,13 @@ jobs:
                 timelineItems(
                   first: 250,
                   itemTypes: [
-                    PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
+                    PROJECT_V2_ITEM_STATUS_CHANGED_EVENT,
+                    ISSUE_COMMENT
                   ]
                 ) {
                   nodes {
+                    __typename
+
                     ... on ProjectV2ItemStatusChangedEvent {
                       createdAt
                       previousStatus
@@ -262,6 +239,11 @@ jobs:
                       project {
                         number
                       }
+                    }
+
+                    ... on IssueComment {
+                      createdAt
+                      body
                     }
                   }
                 }
@@ -272,7 +254,6 @@ jobs:
 
 
           def issue_priority(issue, item):
-
               for value in (
                   issue
                   .get("issueFieldValues", {})
@@ -299,8 +280,7 @@ jobs:
           history_cache = {}
 
 
-          def get_issue_history(repository, number):
-
+          def get_issue_timeline(repository, number):
               cache_key = f"{repository}#{number}"
 
               if cache_key in history_cache:
@@ -330,8 +310,26 @@ jobs:
               return nodes
 
 
-          def load_project(project):
+          result = graphql(
+              PROJECTS_QUERY,
+              {"org": ORG},
+          )
 
+          projects = [
+              p
+              for p in (
+                  result["data"]
+                  ["organization"]
+                  ["projectsV2"]
+                  ["nodes"]
+              )
+              if not p["closed"]
+          ]
+
+          print(f"Found {len(projects)} open projects")
+
+
+          def load_project(project):
               cursor = None
               issues = []
               sprints = {}
@@ -340,7 +338,6 @@ jobs:
               project_priorities = []
 
               while True:
-
                   response = graphql(
                       PROJECT_QUERY,
                       {
@@ -357,7 +354,6 @@ jobs:
                   )
 
                   if metadata is None:
-
                       metadata = {
                           "number": pv2["number"],
                           "title": pv2["title"],
@@ -369,7 +365,6 @@ jobs:
                       }
 
                       for field in pv2["fields"]["nodes"]:
-
                           name = field.get("name")
 
                           if name == "Status":
@@ -390,9 +385,7 @@ jobs:
                                   )
                               ]
 
-                          config = field.get(
-                              "configuration"
-                          )
+                          config = field.get("configuration")
 
                           if not config:
                               continue
@@ -410,7 +403,6 @@ jobs:
                           )
 
                           for sprint in iterations:
-
                               start = sprint["startDate"]
                               duration = sprint["duration"]
 
@@ -430,7 +422,6 @@ jobs:
                   connection = pv2["items"]
 
                   for item in connection["nodes"]:
-
                       issue = item.get("content")
 
                       if not issue:
@@ -462,25 +453,21 @@ jobs:
                           "repository": repository,
                           "title": issue["title"],
                           "url": issue["url"],
-
                           "priority": issue_priority(
                               issue,
                               item,
                           ),
-
                           "issueType": issue_type,
-
                           "opened": issue[
                               "createdAt"
                           ][:10],
-
                           "closed": (
                               issue["closedAt"][:10]
                               if issue["closedAt"]
                               else None
                           ),
-
                           "events": [],
+                          "sprintTransitions": [],
                       })
 
                   if not connection[
@@ -493,13 +480,13 @@ jobs:
                   ]["endCursor"]
 
 
-              # Load project-specific status history.
+              sprint_names = set(sprints.keys())
+
 
               for index, issue in enumerate(
                   issues,
                   start=1,
               ):
-
                   print(
                       f'Project {project["number"]}: '
                       f'[{index}/{len(issues)}] '
@@ -508,47 +495,104 @@ jobs:
                   )
 
                   try:
-
-                      nodes = get_issue_history(
+                      nodes = get_issue_timeline(
                           issue["repository"],
                           issue["number"],
                       )
 
                       for event in nodes:
-
-                          event_project = (
-                              event.get("project")
-                              or {}
+                          typename = event.get(
+                              "__typename"
                           )
 
-                          event_project_number = (
-                              event_project.get("number")
-                          )
-
-                          # Do not allow a status event
-                          # from another project into
-                          # this project's analytics.
                           if (
-                              event_project_number
-                              !=
-                              project["number"]
+                              typename
+                              ==
+                              "ProjectV2ItemStatusChangedEvent"
                           ):
-                              continue
+                              event_project = (
+                                  event.get("project")
+                                  or {}
+                              )
 
-                          status = event.get("status")
+                              if (
+                                  event_project.get("number")
+                                  !=
+                                  project["number"]
+                              ):
+                                  continue
 
-                          if not status:
-                              continue
+                              status = event.get("status")
 
-                          issue["events"].append({
-                              "status": status,
-                              "date": event[
-                                  "createdAt"
-                              ][:10],
-                          })
+                              if not status:
+                                  continue
+
+                              issue["events"].append({
+                                  "status": status,
+                                  "date": event[
+                                      "createdAt"
+                                  ][:10],
+                              })
+
+                          elif typename == "IssueComment":
+                              body = (
+                                  event.get("body")
+                                  or ""
+                              )
+
+                              for match in (
+                                  SPRINT_PATTERN.finditer(
+                                      body
+                                  )
+                              ):
+                                  from_value = (
+                                      match.group(1).strip()
+                                  )
+
+                                  to_value = (
+                                      match.group(2).strip()
+                                  )
+
+                                  # Only retain tracker transitions
+                                  # relevant to this project's sprint
+                                  # configuration or Backlog.
+                                  relevant_values = {
+                                      "Backlog",
+                                      *sprint_names,
+                                  }
+
+                                  if (
+                                      from_value
+                                      not in relevant_values
+                                      and
+                                      to_value
+                                      not in relevant_values
+                                  ):
+                                      continue
+
+                                  issue[
+                                      "sprintTransitions"
+                                  ].append({
+                                      "from":
+                                          from_value,
+
+                                      "to":
+                                          to_value,
+
+                                      "date":
+                                          event[
+                                              "createdAt"
+                                          ][:10],
+                                  })
+
+                      issue[
+                          "sprintTransitions"
+                      ].sort(
+                          key=lambda x:
+                              x["date"]
+                      )
 
                   except Exception as exc:
-
                       print(
                           f'Warning reading '
                           f'{issue["repository"]}'
@@ -559,9 +603,7 @@ jobs:
 
               actual_priorities = []
 
-
               for priority in DEFAULT_PRIORITIES:
-
                   if any(
                       issue["priority"] == priority
                       for issue in issues
@@ -570,14 +612,11 @@ jobs:
                           priority
                       )
 
-
               for priority in project_priorities:
-
                   if priority not in actual_priorities:
                       actual_priorities.append(
                           priority
                       )
-
 
               extra_priorities = sorted({
                   issue["priority"]
@@ -591,11 +630,9 @@ jobs:
                   )
               })
 
-
               actual_priorities.extend(
                   extra_priorities
               )
-
 
               if any(
                   issue["priority"] == "Unspecified"
@@ -604,7 +641,6 @@ jobs:
                   actual_priorities.append(
                       "Unspecified"
                   )
-
 
               return {
                   "project": metadata,
@@ -622,9 +658,7 @@ jobs:
 
           output_projects = []
 
-
           for project in projects:
-
               data = load_project(project)
 
               slug = (
@@ -670,7 +704,6 @@ jobs:
                   indent=2,
               )
           )
-
 
           print(
               json.dumps(
@@ -723,23 +756,18 @@ jobs:
 
               :root {
                 --blue: #2499e8;
-                --blue-dark: #177fc4;
                 --blue-deep: #0f5f98;
                 --blue-light: #eaf6fd;
-                --green: #49b94f;
                 --navy: #172033;
                 --text: #172033;
                 --muted: #5f6b7a;
                 --border: #d7e0e7;
                 --page-bg: #f4f6f8;
-                --card: #ffffff;
               }
-
 
               * {
                 box-sizing: border-box;
               }
-
 
               html,
               body {
@@ -747,7 +775,6 @@ jobs:
                 min-height: 100%;
                 margin: 0;
               }
-
 
               body {
                 overflow-x: hidden;
@@ -763,14 +790,12 @@ jobs:
                   sans-serif;
               }
 
-
               main {
                 width: 100%;
                 max-width: 1600px;
                 margin: 0 auto;
                 padding: 0 32px 40px;
               }
-
 
               h1 {
                 margin: 0 -32px;
@@ -785,17 +810,10 @@ jobs:
                 font-weight: 800;
               }
 
-
               h3 {
                 margin-top: 0;
                 color: var(--navy);
               }
-
-
-              .muted {
-                color: var(--muted);
-              }
-
 
               .toolbar {
                 display: flex;
@@ -808,13 +826,9 @@ jobs:
                 padding:
                   18px 32px;
 
-                background:
-                  var(--page-bg);
-
                 border-bottom:
                   1px solid var(--border);
               }
-
 
               select {
                 min-width: 220px;
@@ -835,32 +849,31 @@ jobs:
                 cursor: pointer;
               }
 
-
               .kpis {
                 display: grid;
 
                 grid-template-columns:
                   repeat(
-                    auto-fit,
+                    6,
                     minmax(
-                      170px,
+                      140px,
                       1fr
                     )
                   );
 
                 gap: 15px;
+
                 width: 100%;
                 min-width: 0;
+
                 margin-bottom: 12px;
               }
-
 
               .card {
                 width: 100%;
                 min-width: 0;
 
                 background: #ffffff;
-                color: var(--text);
 
                 border:
                   1px solid var(--border);
@@ -879,7 +892,6 @@ jobs:
                   );
               }
 
-
               .clickable {
                 cursor: pointer;
 
@@ -887,7 +899,6 @@ jobs:
                   transform .12s ease,
                   box-shadow .12s ease;
               }
-
 
               .clickable:hover {
                 transform:
@@ -903,7 +914,6 @@ jobs:
                   );
               }
 
-
               .label {
                 overflow: hidden;
 
@@ -912,19 +922,18 @@ jobs:
                 font-size: 11px;
                 font-weight: 800;
 
-                text-overflow:
-                  ellipsis;
-
                 text-transform:
                   uppercase;
 
                 letter-spacing:
                   .04em;
 
+                text-overflow:
+                  ellipsis;
+
                 white-space:
                   nowrap;
               }
-
 
               .number {
                 margin-top: 6px;
@@ -936,19 +945,14 @@ jobs:
                 font-weight: 800;
               }
 
-
               .secondary-statuses {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 8px;
 
-                width: 100%;
-                min-width: 0;
-
                 margin:
                   0 0 20px;
               }
-
 
               .status-chip {
                 display: inline-flex;
@@ -970,22 +974,16 @@ jobs:
                 color:
                   var(--navy);
 
-                font-size:
-                  12px;
+                font-size: 12px;
+                font-weight: 650;
 
-                font-weight:
-                  650;
-
-                cursor:
-                  pointer;
+                cursor: pointer;
               }
-
 
               .status-chip strong {
                 color:
                   var(--blue-deep);
               }
-
 
               .grid {
                 display: grid;
@@ -999,16 +997,13 @@ jobs:
                 width: 100%;
                 min-width: 0;
 
-                margin-bottom:
-                  18px;
+                margin-bottom: 18px;
               }
-
 
               .grid > .card {
                 min-width: 0;
                 overflow: hidden;
               }
-
 
               .chart {
                 position: relative;
@@ -1020,7 +1015,6 @@ jobs:
 
                 overflow: hidden;
               }
-
 
               .chart canvas {
                 display: block;
@@ -1035,13 +1029,11 @@ jobs:
                   100% !important;
               }
 
-
               .table-wrap {
                 width: 100%;
                 min-width: 0;
                 overflow-x: auto;
               }
-
 
               table {
                 width: 100%;
@@ -1049,7 +1041,6 @@ jobs:
                 border-collapse:
                   collapse;
               }
-
 
               th,
               td {
@@ -1065,7 +1056,6 @@ jobs:
                   nowrap;
               }
 
-
               th {
                 background:
                   var(--blue-light);
@@ -1080,12 +1070,10 @@ jobs:
                   uppercase;
               }
 
-
               th:first-child,
               td:first-child {
                 text-align: left;
               }
-
 
               .metric-cell {
                 cursor: pointer;
@@ -1102,7 +1090,6 @@ jobs:
                   3px;
               }
 
-
               .modal-backdrop {
                 position: fixed;
                 inset: 0;
@@ -1110,11 +1097,8 @@ jobs:
 
                 display: flex;
 
-                align-items:
-                  center;
-
-                justify-content:
-                  center;
+                align-items: center;
+                justify-content: center;
 
                 padding: 18px;
 
@@ -1127,11 +1111,9 @@ jobs:
                   );
               }
 
-
               .modal-backdrop.hidden {
                 display: none;
               }
-
 
               .modal {
                 width:
@@ -1143,14 +1125,11 @@ jobs:
                 max-height:
                   92vh;
 
-                background:
-                  #ffffff;
+                background: #ffffff;
 
-                border-radius:
-                  16px;
+                border-radius: 16px;
 
-                overflow:
-                  hidden;
+                overflow: hidden;
 
                 box-shadow:
                   0 30px 80px
@@ -1161,7 +1140,6 @@ jobs:
                     .28
                   );
               }
-
 
               .modal-header {
                 display: flex;
@@ -1178,19 +1156,12 @@ jobs:
                 background:
                   var(--blue-deep);
 
-                color:
-                  #ffffff;
+                color: #ffffff;
               }
-
 
               .modal-header h2 {
-                margin:
-                  0 0 4px;
-
-                color:
-                  #ffffff;
+                margin: 0 0 4px;
               }
-
 
               .modal-header .muted {
                 color:
@@ -1202,87 +1173,58 @@ jobs:
                   );
               }
 
-
               .modal-body {
-                max-height:
-                  78vh;
-
+                max-height: 78vh;
                 overflow: auto;
               }
 
-
               .close-button {
                 border: 0;
-
-                background:
-                  transparent;
-
-                color:
-                  #ffffff;
-
-                font-size:
-                  32px;
-
-                cursor:
-                  pointer;
+                background: transparent;
+                color: #ffffff;
+                font-size: 32px;
+                cursor: pointer;
               }
-
 
               .drilldown-table {
-                width:
-                  max-content;
-
-                min-width:
-                  100%;
+                width: max-content;
+                min-width: 100%;
               }
 
-
               .drilldown-table th {
-                position:
-                  sticky;
-
+                position: sticky;
                 top: 0;
                 z-index: 3;
               }
-
 
               .drilldown-table td {
                 font-size: 12px;
               }
 
-
               .issue-column {
                 min-width: 190px;
               }
-
 
               .title-column {
                 min-width: 280px;
                 max-width: 400px;
 
                 text-align: left;
-
-                white-space:
-                  normal;
+                white-space: normal;
               }
-
 
               .date-column {
                 min-width: 120px;
                 line-height: 1.6;
               }
 
-
               .issue-link {
                 color:
                   var(--blue-deep);
 
-                text-decoration:
-                  none;
-
+                text-decoration: none;
                 font-weight: 750;
               }
-
 
               .highlight {
                 background:
@@ -1294,22 +1236,24 @@ jobs:
                   var(--blue);
               }
 
-
               .empty-state {
                 padding: 50px;
 
-                text-align:
-                  center;
-
-                color:
-                  var(--muted);
+                text-align: center;
+                color: var(--muted);
               }
 
+              @media(max-width:1100px) {
+                .kpis {
+                  grid-template-columns:
+                    repeat(
+                      3,
+                      minmax(0, 1fr)
+                    );
+                }
+              }
 
-              @media(
-                max-width: 900px
-              ) {
-
+              @media(max-width:900px) {
                 main {
                   padding:
                     0 18px 30px;
@@ -1333,23 +1277,28 @@ jobs:
 
                 .grid {
                   grid-template-columns:
-                    minmax(
-                      0,
-                      1fr
-                    );
+                    minmax(0, 1fr);
                 }
 
                 select {
                   width: 100%;
                   min-width: 0;
                 }
+              }
 
+              @media(max-width:620px) {
+                .kpis {
+                  grid-template-columns:
+                    repeat(
+                      2,
+                      minmax(0, 1fr)
+                    );
+                }
               }
 
             </style>
 
           </head>
-
 
           <body>
 
@@ -1359,69 +1308,40 @@ jobs:
                 Sprint Analytics
               </h1>
 
-
               <div class="toolbar">
-
-                <select
-                  id="projectSelect">
-                </select>
-
-                <select
-                  id="sprintSelect">
-                </select>
-
+                <select id="projectSelect"></select>
+                <select id="sprintSelect"></select>
               </div>
 
-
               <section
-                id="statusKpis"
+                id="headlineKpis"
                 class="kpis">
               </section>
-
 
               <div
                 id="secondaryStatuses"
                 class="secondary-statuses">
               </div>
 
-
               <div class="grid">
 
                 <section class="card">
-
-                  <h3>
-                    Sprint Flow
-                  </h3>
+                  <h3>Sprint Flow</h3>
 
                   <div class="chart">
-
-                    <canvas
-                      id="flowChart">
-                    </canvas>
-
+                    <canvas id="flowChart"></canvas>
                   </div>
-
                 </section>
 
-
                 <section class="card">
-
-                  <h3>
-                    Work by Type
-                  </h3>
+                  <h3>Work by Type</h3>
 
                   <div class="chart">
-
-                    <canvas
-                      id="typeChart">
-                    </canvas>
-
+                    <canvas id="typeChart"></canvas>
                   </div>
-
                 </section>
 
               </div>
-
 
               <section class="card">
 
@@ -1434,14 +1354,10 @@ jobs:
                   <table>
 
                     <thead>
-                      <tr
-                        id="priorityHeader">
-                      </tr>
+                      <tr id="priorityHeader"></tr>
                     </thead>
 
-                    <tbody
-                      id="priorityRows">
-                    </tbody>
+                    <tbody id="priorityRows"></tbody>
 
                   </table>
 
@@ -1461,18 +1377,12 @@ jobs:
                 <div class="modal-header">
 
                   <div>
-
-                    <h2
-                      id="drilldownTitle">
-                    </h2>
-
+                    <h2 id="drilldownTitle"></h2>
                     <div
                       id="drilldownSubtitle"
                       class="muted">
                     </div>
-
                   </div>
-
 
                   <button
                     id="closeDrilldown"
@@ -1483,24 +1393,17 @@ jobs:
 
                 </div>
 
-
                 <div class="modal-body">
 
-                  <table
-                    class="drilldown-table">
+                  <table class="drilldown-table">
 
                     <thead>
-                      <tr
-                        id="drilldownHeader">
-                      </tr>
+                      <tr id="drilldownHeader"></tr>
                     </thead>
 
-                    <tbody
-                      id="drilldownRows">
-                    </tbody>
+                    <tbody id="drilldownRows"></tbody>
 
                   </table>
-
 
                   <div
                     id="drilldownEmpty"
@@ -1526,11 +1429,7 @@ jobs:
                 Date.now();
 
 
-              function within(
-                date,
-                sprint
-              ) {
-
+              function within(date, sprint) {
                 return (
                   date
                   &&
@@ -1538,45 +1437,22 @@ jobs:
                   &&
                   date <= sprint.end
                 );
-
               }
 
 
-              function escapeHtml(
-                value
-              ) {
-
+              function escapeHtml(value) {
                 return String(
                   value ?? ""
                 )
-                .replaceAll(
-                  "&",
-                  "&amp;"
-                )
-                .replaceAll(
-                  "<",
-                  "&lt;"
-                )
-                .replaceAll(
-                  ">",
-                  "&gt;"
-                )
-                .replaceAll(
-                  '"',
-                  "&quot;"
-                )
-                .replaceAll(
-                  "'",
-                  "&#039;"
-                );
-
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
               }
 
 
-              function issueId(
-                issue
-              ) {
-
+              function issueId(issue) {
                 return (
                   issue.repository
                   +
@@ -1584,7 +1460,6 @@ jobs:
                   +
                   issue.number
                 );
-
               }
 
 
@@ -1593,7 +1468,6 @@ jobs:
                 if (!projectData) {
                   return null;
                 }
-
 
                 const index =
                   Number(
@@ -1604,7 +1478,6 @@ jobs:
                     .value
                   );
 
-
                 return (
                   projectData.sprints[index]
                   ||
@@ -1614,45 +1487,159 @@ jobs:
               }
 
 
-              function statusDates(
+              function transitionsIntoSprint(
                 issue,
-                status
+                sprint
               ) {
 
-                return issue.events
+                return (
+                  issue.sprintTransitions
+                  ||
+                  []
+                )
+                .filter(
+                  transition =>
+                    transition.to
+                    ===
+                    sprint.name
+                )
+                .sort(
+                  (a, b) =>
+                    a.date.localeCompare(
+                      b.date
+                    )
+                );
+
+              }
+
+
+              function latestEntryIntoSprint(
+                issue,
+                sprint
+              ) {
+
+                const transitions =
+                  transitionsIntoSprint(
+                    issue,
+                    sprint
+                  );
+
+                return (
+                  transitions.length
+                  ?
+                  transitions[
+                    transitions.length - 1
+                  ]
+                  :
+                  null
+                );
+
+              }
+
+
+              function committedIssues(
+                sprint
+              ) {
+
+                return projectData
+                  .issues
                   .filter(
-                    event =>
-                      event.status
-                      ===
-                      status
-                  )
-                  .map(
-                    event =>
-                      event.date
-                  )
-                  .sort();
+                    issue => {
+
+                      const entry =
+                        latestEntryIntoSprint(
+                          issue,
+                          sprint
+                        );
+
+                      return (
+                        entry
+                        &&
+                        entry.date
+                        <=
+                        sprint.start
+                      );
+
+                    }
+                  );
 
               }
 
 
-              function renderDates(
-                dates
+              function carriedOverIssues(
+                sprint
               ) {
 
-                return dates
-                  .map(
-                    date =>
-                      escapeHtml(date)
-                  )
-                  .join("<br>");
+                return projectData
+                  .issues
+                  .filter(
+                    issue => {
+
+                      const entry =
+                        latestEntryIntoSprint(
+                          issue,
+                          sprint
+                        );
+
+                      if (!entry) {
+                        return false;
+                      }
+
+                      return (
+                        entry.from
+                        !==
+                        "Backlog"
+                        &&
+                        entry.from
+                        !==
+                        sprint.name
+                      );
+
+                    }
+                  );
 
               }
 
 
-              function matchingStatusIssues(
-                sprint,
-                status,
-                priority = null
+              function addedIssues(
+                sprint
+              ) {
+
+                return projectData
+                  .issues
+                  .filter(
+                    issue => {
+
+                      const entry =
+                        latestEntryIntoSprint(
+                          issue,
+                          sprint
+                        );
+
+                      return (
+                        entry
+                        &&
+                        entry.from
+                        ===
+                        "Backlog"
+                        &&
+                        entry.date
+                        >
+                        sprint.start
+                        &&
+                        entry.date
+                        <=
+                        sprint.end
+                      );
+
+                    }
+                  );
+
+              }
+
+
+              function removedIssues(
+                sprint
               ) {
 
                 return projectData
@@ -1660,21 +1647,22 @@ jobs:
                   .filter(
                     issue =>
                       (
-                        !priority
+                        issue.sprintTransitions
                         ||
-                        issue.priority
-                        ===
-                        priority
+                        []
                       )
-                      &&
-                      issue.events.some(
-                        event =>
-                          event.status
+                      .some(
+                        transition =>
+                          transition.from
                           ===
-                          status
+                          sprint.name
+                          &&
+                          transition.to
+                          !==
+                          sprint.name
                           &&
                           within(
-                            event.date,
+                            transition.date,
                             sprint
                           )
                       )
@@ -1735,9 +1723,863 @@ jobs:
               }
 
 
-              function isBug(
-                issue
+              function completionRate(
+                sprint
               ) {
+
+                const committed =
+                  committedIssues(
+                    sprint
+                  );
+
+
+                const added =
+                  addedIssues(
+                    sprint
+                  );
+
+
+                const plannedIds =
+                  new Set([
+                    ...committed,
+                    ...added
+                  ]
+                  .map(issueId));
+
+
+                if (!plannedIds.size) {
+                  return 0;
+                }
+
+
+                const completed =
+                  projectData
+                  .issues
+                  .filter(
+                    issue =>
+                      plannedIds.has(
+                        issueId(issue)
+                      )
+                      &&
+                      within(
+                        issue.closed,
+                        sprint
+                      )
+                  );
+
+
+                return (
+                  completed.length
+                  /
+                  plannedIds.size
+                  *
+                  100
+                );
+
+              }
+
+
+              function statusDates(
+                issue,
+                status
+              ) {
+
+                return issue.events
+                  .filter(
+                    event =>
+                      event.status
+                      ===
+                      status
+                  )
+                  .map(
+                    event =>
+                      event.date
+                  )
+                  .sort();
+
+              }
+
+
+              function matchingStatusIssues(
+                sprint,
+                status,
+                priority = null
+              ) {
+
+                return projectData
+                  .issues
+                  .filter(
+                    issue =>
+                      (
+                        !priority
+                        ||
+                        issue.priority
+                        ===
+                        priority
+                      )
+                      &&
+                      issue.events
+                      .some(
+                        event =>
+                          event.status
+                          ===
+                          status
+                          &&
+                          within(
+                            event.date,
+                            sprint
+                          )
+                      )
+                  );
+
+              }
+
+
+              function renderHeadlineKpis(
+                sprint
+              ) {
+
+                const container =
+                  document.getElementById(
+                    "headlineKpis"
+                  );
+
+
+                container.innerHTML = "";
+
+
+                const items = [
+
+                  {
+                    label:
+                      "Committed",
+
+                    value:
+                      committedIssues(
+                        sprint
+                      ).length,
+
+                    issues:
+                      committedIssues(
+                        sprint
+                      )
+                  },
+
+                  {
+                    label:
+                      "Carried Over",
+
+                    value:
+                      carriedOverIssues(
+                        sprint
+                      ).length,
+
+                    issues:
+                      carriedOverIssues(
+                        sprint
+                      )
+                  },
+
+                  {
+                    label:
+                      "Added",
+
+                    value:
+                      addedIssues(
+                        sprint
+                      ).length,
+
+                    issues:
+                      addedIssues(
+                        sprint
+                      )
+                  },
+
+                  {
+                    label:
+                      "Removed",
+
+                    value:
+                      removedIssues(
+                        sprint
+                      ).length,
+
+                    issues:
+                      removedIssues(
+                        sprint
+                      )
+                  },
+
+                  {
+                    label:
+                      "Closed",
+
+                    value:
+                      closedIssues(
+                        sprint
+                      ).length,
+
+                    issues:
+                      closedIssues(
+                        sprint
+                      ),
+
+                    highlight:
+                      "closed"
+                  },
+
+                  {
+                    label:
+                      "Completion",
+
+                    value:
+                      completionRate(
+                        sprint
+                      ).toFixed(0)
+                      +
+                      "%",
+
+                    issues:
+                      null
+                  }
+
+                ];
+
+
+                items.forEach(
+                  item => {
+
+                    const card =
+                      document
+                      .createElement(
+                        "div"
+                      );
+
+
+                    card.className =
+                      item.issues
+                      ?
+                      "card clickable"
+                      :
+                      "card";
+
+
+                    card.innerHTML = `
+
+                      <div class="label">
+                        ${
+                          escapeHtml(
+                            item.label
+                          )
+                        }
+                      </div>
+
+                      <div class="number">
+                        ${
+                          escapeHtml(
+                            item.value
+                          )
+                        }
+                      </div>
+
+                    `;
+
+
+                    if (item.issues) {
+
+                      card.onclick =
+                        () =>
+                          openDrilldown(
+                            item.label,
+                            sprint,
+                            item.issues,
+                            item.highlight
+                            ||
+                            null
+                          );
+
+                    }
+
+
+                    container.appendChild(
+                      card
+                    );
+
+                  }
+                );
+
+
+                renderStatusChips(
+                  sprint
+                );
+
+              }
+
+
+              function renderStatusChips(
+                sprint
+              ) {
+
+                const container =
+                  document.getElementById(
+                    "secondaryStatuses"
+                  );
+
+
+                container.innerHTML = "";
+
+
+                projectData
+                  .statuses
+                  .forEach(
+                    status => {
+
+                      const issues =
+                        matchingStatusIssues(
+                          sprint,
+                          status
+                        );
+
+
+                      const chip =
+                        document.createElement(
+                          "button"
+                        );
+
+
+                      chip.className =
+                        "status-chip";
+
+                      chip.type =
+                        "button";
+
+
+                      chip.innerHTML = `
+
+                        <span>
+                          ${
+                            escapeHtml(
+                              status
+                            )
+                          }
+                        </span>
+
+                        <strong>
+                          ${issues.length}
+                        </strong>
+
+                      `;
+
+
+                      chip.onclick =
+                        () =>
+                          openDrilldown(
+                            status,
+                            sprint,
+                            issues,
+                            status
+                          );
+
+
+                      container.appendChild(
+                        chip
+                      );
+
+                    }
+                  );
+
+              }
+
+
+              function workedIssues(
+                sprint
+              ) {
+
+                const ids = new Set();
+
+
+                projectData
+                  .issues
+                  .forEach(
+                    issue => {
+
+                      if (
+                        within(
+                          issue.closed,
+                          sprint
+                        )
+                      ) {
+                        ids.add(
+                          issueId(issue)
+                        );
+                      }
+
+
+                      issue.events.forEach(
+                        event => {
+
+                          if (
+                            within(
+                              event.date,
+                              sprint
+                            )
+                          ) {
+                            ids.add(
+                              issueId(issue)
+                            );
+                          }
+
+                        }
+                      );
+
+                    }
+                  );
+
+
+                return projectData
+                  .issues
+                  .filter(
+                    issue =>
+                      ids.has(
+                        issueId(issue)
+                      )
+                  );
+
+              }
+
+
+              function typeBreakdown(
+                sprint
+              ) {
+
+                const counts = {};
+
+
+                workedIssues(
+                  sprint
+                )
+                .forEach(
+                  issue => {
+
+                    const type =
+                      issue.issueType
+                      ||
+                      "Unspecified";
+
+
+                    counts[type] =
+                      (
+                        counts[type]
+                        ||
+                        0
+                      )
+                      +
+                      1;
+
+                  }
+                );
+
+
+                return Object
+                  .entries(counts)
+                  .map(
+                    ([type, count]) => ({
+                      type,
+                      count
+                    })
+                  )
+                  .sort(
+                    (a, b) =>
+                      b.count - a.count
+                  );
+
+              }
+
+
+              function issuesForType(
+                sprint,
+                type
+              ) {
+
+                return workedIssues(
+                  sprint
+                )
+                .filter(
+                  issue =>
+                    (
+                      issue.issueType
+                      ||
+                      "Unspecified"
+                    )
+                    ===
+                    type
+                );
+
+              }
+
+
+              const flowChart =
+                new Chart(
+                  document.getElementById(
+                    "flowChart"
+                  ),
+                  {
+
+                    type: "bar",
+
+                    data: {
+                      labels: [],
+
+                      datasets: [{
+                        label: "Issues",
+                        data: [],
+                        backgroundColor:
+                          "#2499e8",
+                        borderWidth: 0
+                      }]
+                    },
+
+                    options: {
+                      responsive: true,
+
+                      maintainAspectRatio:
+                        false,
+
+                      resizeDelay:
+                        100,
+
+                      onClick:
+                        (
+                          event,
+                          elements
+                        ) => {
+
+                          if (
+                            !elements.length
+                          ) {
+                            return;
+                          }
+
+                          const sprint =
+                            selectedSprint();
+
+                          const descriptor =
+                            flowChart
+                            ._metricDescriptors[
+                              elements[0].index
+                            ];
+
+                          if (!descriptor) {
+                            return;
+                          }
+
+                          openDrilldown(
+                            descriptor.label,
+                            sprint,
+                            descriptor.issues(),
+                            descriptor.highlight
+                          );
+
+                        }
+                    }
+
+                  }
+                );
+
+
+              function renderFlowChart(
+                sprint
+              ) {
+
+                const descriptors = [
+
+                  {
+                    label: "Opened",
+
+                    issues:
+                      () =>
+                        openedIssues(
+                          sprint
+                        ),
+
+                    highlight:
+                      "opened"
+                  },
+
+                  ...projectData
+                  .statuses
+                  .map(
+                    status => ({
+
+                      label: status,
+
+                      issues:
+                        () =>
+                          matchingStatusIssues(
+                            sprint,
+                            status
+                          ),
+
+                      highlight:
+                        status
+
+                    })
+                  ),
+
+                  {
+                    label: "Closed",
+
+                    issues:
+                      () =>
+                        closedIssues(
+                          sprint
+                        ),
+
+                    highlight:
+                      "closed"
+                  }
+
+                ];
+
+
+                flowChart
+                  ._metricDescriptors =
+                    descriptors;
+
+
+                flowChart.data.labels =
+                  descriptors.map(
+                    item =>
+                      item.label
+                  );
+
+
+                flowChart
+                  .data
+                  .datasets[0]
+                  .data =
+                    descriptors.map(
+                      item =>
+                        item
+                        .issues()
+                        .length
+                    );
+
+
+                flowChart.update();
+
+              }
+
+
+              const TYPE_COLORS = [
+                "#2499e8",
+                "#49b94f",
+                "#0f5f98",
+                "#7bc8f6",
+                "#8fd694",
+                "#506784",
+                "#b8dff7",
+                "#86a9c4",
+                "#a7d9aa",
+                "#36566f",
+                "#5ab5ef",
+                "#72c879"
+              ];
+
+
+              const typeChart =
+                new Chart(
+                  document.getElementById(
+                    "typeChart"
+                  ),
+                  {
+
+                    type:
+                      "doughnut",
+
+                    data: {
+                      labels: [],
+
+                      datasets: [{
+                        data: [],
+                        backgroundColor: [],
+                        borderColor:
+                          "#ffffff",
+                        borderWidth: 2,
+                        hoverOffset: 8
+                      }]
+                    },
+
+                    options: {
+                      responsive: true,
+
+                      maintainAspectRatio:
+                        false,
+
+                      resizeDelay:
+                        100,
+
+                      cutout:
+                        "58%",
+
+                      plugins: {
+
+                        legend: {
+                          position:
+                            "bottom",
+
+                          labels: {
+                            usePointStyle:
+                              true,
+
+                            pointStyle:
+                              "circle",
+
+                            padding:
+                              14
+                          }
+                        },
+
+                        tooltip: {
+                          callbacks: {
+                            label:
+                              context => {
+
+                                const value =
+                                  context.raw
+                                  ||
+                                  0;
+
+                                const total =
+                                  context.dataset.data
+                                  .reduce(
+                                    (
+                                      sum,
+                                      current
+                                    ) =>
+                                      sum
+                                      +
+                                      current,
+                                    0
+                                  );
+
+                                const percent =
+                                  total
+                                  ?
+                                  (
+                                    value
+                                    /
+                                    total
+                                    *
+                                    100
+                                  )
+                                  .toFixed(1)
+                                  :
+                                  "0.0";
+
+                                return (
+                                  `${context.label}: ` +
+                                  `${value} ` +
+                                  `(${percent}%)`
+                                );
+
+                              }
+                          }
+                        }
+                      },
+
+                      onClick:
+                        (
+                          event,
+                          elements
+                        ) => {
+
+                          if (
+                            !elements.length
+                          ) {
+                            return;
+                          }
+
+                          const sprint =
+                            selectedSprint();
+
+                          const type =
+                            typeChart
+                            .data
+                            .labels[
+                              elements[0].index
+                            ];
+
+                          if (!type) {
+                            return;
+                          }
+
+                          openDrilldown(
+                            type,
+                            sprint,
+                            issuesForType(
+                              sprint,
+                              type
+                            )
+                          );
+
+                        }
+                    }
+
+                  }
+                );
+
+
+              function renderTypeChart(
+                sprint
+              ) {
+
+                const breakdown =
+                  typeBreakdown(
+                    sprint
+                  );
+
+
+                typeChart.data.labels =
+                  breakdown.map(
+                    item =>
+                      item.type
+                  );
+
+
+                typeChart
+                  .data
+                  .datasets[0]
+                  .data =
+                    breakdown.map(
+                      item =>
+                        item.count
+                    );
+
+
+                typeChart
+                  .data
+                  .datasets[0]
+                  .backgroundColor =
+                    breakdown.map(
+                      (
+                        item,
+                        index
+                      ) =>
+                        TYPE_COLORS[
+                          index
+                          %
+                          TYPE_COLORS.length
+                        ]
+                    );
+
+
+                typeChart.update();
+
+              }
+
+
+              function isBug(issue) {
 
                 return (
                   (
@@ -1781,838 +2623,12 @@ jobs:
               }
 
 
-              /*
-               * An issue counts as worked during
-               * the sprint when it either:
-               *
-               * 1. had a status transition in this
-               *    project during the sprint, or
-               *
-               * 2. was closed during the sprint.
-               */
-
-              function workedIssues(
-                sprint
-              ) {
-
-                const ids =
-                  new Set();
-
-
-                projectData
-                  .issues
-                  .forEach(
-                    issue => {
-
-                      if (
-                        within(
-                          issue.closed,
-                          sprint
-                        )
-                      ) {
-
-                        ids.add(
-                          issueId(issue)
-                        );
-
-                      }
-
-
-                      issue.events
-                        .forEach(
-                          event => {
-
-                            if (
-                              within(
-                                event.date,
-                                sprint
-                              )
-                            ) {
-
-                              ids.add(
-                                issueId(issue)
-                              );
-
-                            }
-
-                          }
-                        );
-
-                    }
-                  );
-
-
-                return projectData
-                  .issues
-                  .filter(
-                    issue =>
-                      ids.has(
-                        issueId(issue)
-                      )
-                  );
-
-              }
-
-
-              /*
-               * Dynamically discover every Type
-               * represented by worked issues.
-               */
-
-              function typeBreakdown(
-                sprint
-              ) {
-
-                const counts = {};
-
-
-                workedIssues(
-                  sprint
-                )
-                .forEach(
-                  issue => {
-
-                    const type =
-                      issue.issueType
-                      ||
-                      "Unspecified";
-
-
-                    counts[type] =
-                      (
-                        counts[type]
-                        ||
-                        0
-                      )
-                      +
-                      1;
-
-                  }
-                );
-
-
-                return Object
-                  .entries(counts)
-                  .map(
-                    (
-                      [
-                        type,
-                        count
-                      ]
-                    ) => ({
-                      type,
-                      count
-                    })
-                  )
-                  .sort(
-                    (a, b) =>
-                      b.count
-                      -
-                      a.count
-                  );
-
-              }
-
-
-              function issuesForType(
-                sprint,
-                type
-              ) {
-
-                return workedIssues(
-                  sprint
-                )
-                .filter(
-                  issue =>
-                    (
-                      issue.issueType
-                      ||
-                      "Unspecified"
-                    )
-                    ===
-                    type
-                );
-
-              }
-
-
-              function renderKpis(
-                sprint
-              ) {
-
-                const container =
-                  document
-                  .getElementById(
-                    "statusKpis"
-                  );
-
-
-                const secondary =
-                  document
-                  .getElementById(
-                    "secondaryStatuses"
-                  );
-
-
-                container.innerHTML = "";
-                secondary.innerHTML = "";
-
-
-                const statusMetrics =
-                  projectData
-                  .statuses
-                  .map(
-                    status => ({
-
-                      status,
-
-                      issues:
-                        matchingStatusIssues(
-                          sprint,
-                          status
-                        )
-
-                    })
-                  );
-
-
-                const primaryStatuses =
-                  statusMetrics
-                  .filter(
-                    item =>
-                      item.issues.length > 0
-                  )
-                  .slice(0, 4);
-
-
-                const primaryItems = [
-
-                  {
-                    label: "Opened",
-
-                    issues:
-                      openedIssues(sprint),
-
-                    highlight:
-                      "opened"
-                  },
-
-
-                  ...primaryStatuses.map(
-                    item => ({
-
-                      label:
-                        item.status,
-
-                      issues:
-                        item.issues,
-
-                      highlight:
-                        item.status
-
-                    })
-                  ),
-
-
-                  {
-                    label: "Closed",
-
-                    issues:
-                      closedIssues(sprint),
-
-                    highlight:
-                      "closed"
-                  }
-
-                ];
-
-
-                primaryItems
-                  .forEach(
-                    item => {
-
-                      const card =
-                        document
-                        .createElement(
-                          "div"
-                        );
-
-
-                      card.className =
-                        "card clickable";
-
-
-                      card.innerHTML = `
-
-                        <div class="label">
-                          ${
-                            escapeHtml(
-                              item.label
-                            )
-                          }
-                        </div>
-
-                        <div class="number">
-                          ${
-                            item.issues.length
-                          }
-                        </div>
-
-                      `;
-
-
-                      card.onclick =
-                        () =>
-                          openDrilldown(
-                            item.label,
-                            sprint,
-                            item.issues,
-                            item.highlight
-                          );
-
-
-                      container
-                        .appendChild(card);
-
-                    }
-                  );
-
-
-                const primaryNames =
-                  new Set(
-                    primaryStatuses
-                    .map(
-                      item =>
-                        item.status
-                    )
-                  );
-
-
-                statusMetrics
-                  .filter(
-                    item =>
-                      !primaryNames.has(
-                        item.status
-                      )
-                  )
-                  .forEach(
-                    item => {
-
-                      const chip =
-                        document
-                        .createElement(
-                          "button"
-                        );
-
-
-                      chip.className =
-                        "status-chip";
-
-                      chip.type =
-                        "button";
-
-
-                      chip.innerHTML = `
-
-                        <span>
-                          ${
-                            escapeHtml(
-                              item.status
-                            )
-                          }
-                        </span>
-
-                        <strong>
-                          ${
-                            item.issues.length
-                          }
-                        </strong>
-
-                      `;
-
-
-                      chip.onclick =
-                        () =>
-                          openDrilldown(
-                            item.status,
-                            sprint,
-                            item.issues,
-                            item.status
-                          );
-
-
-                      secondary
-                        .appendChild(chip);
-
-                    }
-                  );
-
-              }
-
-
-              /*
-               * Sprint Flow
-               */
-
-              const flowChart =
-                new Chart(
-                  document
-                  .getElementById(
-                    "flowChart"
-                  ),
-                  {
-
-                    type: "bar",
-
-                    data: {
-
-                      labels: [],
-
-                      datasets: [{
-
-                        label: "Issues",
-
-                        data: [],
-
-                        backgroundColor:
-                          "#2499e8",
-
-                        borderWidth: 0
-
-                      }]
-
-                    },
-
-                    options: {
-
-                      responsive: true,
-
-                      maintainAspectRatio:
-                        false,
-
-                      resizeDelay: 100,
-
-                      onClick:
-                        (
-                          event,
-                          elements
-                        ) => {
-
-                          if (
-                            !elements.length
-                          ) {
-                            return;
-                          }
-
-
-                          const sprint =
-                            selectedSprint();
-
-
-                          const index =
-                            elements[0].index;
-
-
-                          const descriptor =
-                            flowChart
-                            ._metricDescriptors[
-                              index
-                            ];
-
-
-                          if (!descriptor) {
-                            return;
-                          }
-
-
-                          openDrilldown(
-                            descriptor.label,
-                            sprint,
-                            descriptor.issues(),
-                            descriptor.highlight
-                          );
-
-                        }
-
-                    }
-
-                  }
-                );
-
-
-              function renderFlowChart(
-                sprint
-              ) {
-
-                const descriptors = [
-
-                  {
-                    label: "Opened",
-
-                    issues:
-                      () =>
-                        openedIssues(
-                          sprint
-                        ),
-
-                    highlight:
-                      "opened"
-                  },
-
-
-                  ...projectData
-                  .statuses
-                  .map(
-                    status => ({
-
-                      label: status,
-
-                      issues:
-                        () =>
-                          matchingStatusIssues(
-                            sprint,
-                            status
-                          ),
-
-                      highlight:
-                        status
-
-                    })
-                  ),
-
-
-                  {
-                    label: "Closed",
-
-                    issues:
-                      () =>
-                        closedIssues(
-                          sprint
-                        ),
-
-                    highlight:
-                      "closed"
-                  }
-
-                ];
-
-
-                flowChart
-                  ._metricDescriptors =
-                    descriptors;
-
-
-                flowChart
-                  .data
-                  .labels =
-                    descriptors.map(
-                      item =>
-                        item.label
-                    );
-
-
-                flowChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    descriptors.map(
-                      item =>
-                        item
-                        .issues()
-                        .length
-                    );
-
-
-                flowChart.update();
-
-              }
-
-
-              /*
-               * Work by Type
-               *
-               * Dynamic doughnut chart.
-               *
-               * Nothing here assumes Bug or
-               * Enhancement. Every Issue Type
-               * represented in the selected sprint
-               * becomes a slice automatically.
-               */
-
-              const TYPE_COLORS = [
-                "#2499e8",
-                "#49b94f",
-                "#0f5f98",
-                "#7bc8f6",
-                "#8fd694",
-                "#506784",
-                "#b8dff7",
-                "#86a9c4",
-                "#a7d9aa",
-                "#36566f",
-                "#5ab5ef",
-                "#72c879",
-                "#6d8ba4",
-                "#9ccff0",
-                "#68a6cf",
-                "#b9e2bb",
-                "#437ca3",
-                "#92c4e5",
-                "#77b87d",
-                "#244c69",
-                "#c9e8fa"
-              ];
-
-
-              const typeChart =
-                new Chart(
-                  document
-                  .getElementById(
-                    "typeChart"
-                  ),
-                  {
-
-                    type:
-                      "doughnut",
-
-                    data: {
-
-                      labels: [],
-
-                      datasets: [{
-
-                        data: [],
-
-                        backgroundColor:
-                          [],
-
-                        borderColor:
-                          "#ffffff",
-
-                        borderWidth: 2,
-
-                        hoverOffset: 8
-
-                      }]
-
-                    },
-
-                    options: {
-
-                      responsive: true,
-
-                      maintainAspectRatio:
-                        false,
-
-                      resizeDelay: 100,
-
-                      cutout: "58%",
-
-                      plugins: {
-
-                        legend: {
-
-                          position:
-                            "bottom",
-
-                          labels: {
-
-                            usePointStyle:
-                              true,
-
-                            pointStyle:
-                              "circle",
-
-                            padding: 14,
-
-                            boxWidth: 8,
-
-                            font: {
-                              size: 11
-                            }
-
-                          }
-
-                        },
-
-                        tooltip: {
-
-                          callbacks: {
-
-                            label:
-                              context => {
-
-                                const value =
-                                  context.raw
-                                  ||
-                                  0;
-
-
-                                const total =
-                                  context
-                                  .dataset
-                                  .data
-                                  .reduce(
-                                    (
-                                      sum,
-                                      current
-                                    ) =>
-                                      sum
-                                      +
-                                      current,
-                                    0
-                                  );
-
-
-                                const percent =
-                                  total
-                                  ?
-                                  (
-                                    value
-                                    /
-                                    total
-                                    *
-                                    100
-                                  )
-                                  .toFixed(1)
-                                  :
-                                  "0.0";
-
-
-                                return (
-                                  `${context.label}: ` +
-                                  `${value} ` +
-                                  `(${percent}%)`
-                                );
-
-                              }
-
-                          }
-
-                        }
-
-                      },
-
-
-                      onClick:
-                        (
-                          event,
-                          elements
-                        ) => {
-
-                          if (
-                            !elements.length
-                          ) {
-                            return;
-                          }
-
-
-                          const sprint =
-                            selectedSprint();
-
-
-                          const index =
-                            elements[0].index;
-
-
-                          const type =
-                            typeChart
-                            .data
-                            .labels[index];
-
-
-                          if (!type) {
-                            return;
-                          }
-
-
-                          openDrilldown(
-                            type,
-                            sprint,
-                            issuesForType(
-                              sprint,
-                              type
-                            )
-                          );
-
-                        }
-
-                    }
-
-                  }
-                );
-
-
-              function renderTypeChart(
-                sprint
-              ) {
-
-                const breakdown =
-                  typeBreakdown(
-                    sprint
-                  );
-
-
-                typeChart
-                  .data
-                  .labels =
-                    breakdown.map(
-                      item =>
-                        item.type
-                    );
-
-
-                typeChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    breakdown.map(
-                      item =>
-                        item.count
-                    );
-
-
-                /*
-                 * Assign colors dynamically.
-                 *
-                 * If there are more Types than
-                 * predefined colors, the palette
-                 * simply repeats.
-                 */
-
-                typeChart
-                  .data
-                  .datasets[0]
-                  .backgroundColor =
-                    breakdown.map(
-                      (
-                        item,
-                        index
-                      ) =>
-                        TYPE_COLORS[
-                          index
-                          %
-                          TYPE_COLORS.length
-                        ]
-                    );
-
-
-                typeChart.update();
-
-              }
-
-
-              /*
-               * Priority table
-               */
-
               function renderPriorityTable(
                 sprint
               ) {
 
                 const header =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "priorityHeader"
                   );
 
@@ -2623,17 +2639,13 @@ jobs:
                 const headers = [
 
                   "Priority",
-
                   "Opened",
 
                   ...projectData.statuses,
 
                   "Closed",
-
                   "Bug Opened",
-
                   "Bug Closed",
-
                   "Bug C/R"
 
                 ];
@@ -2643,15 +2655,12 @@ jobs:
                   name => {
 
                     const th =
-                      document
-                      .createElement(
+                      document.createElement(
                         "th"
                       );
 
-
                     th.textContent =
                       name;
-
 
                     header.appendChild(
                       th
@@ -2662,8 +2671,7 @@ jobs:
 
 
                 const tbody =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "priorityRows"
                   );
 
@@ -2671,21 +2679,18 @@ jobs:
                 tbody.innerHTML = "";
 
 
-                projectData
-                  .priorities
+                projectData.priorities
                   .forEach(
                     priority => {
 
                       const row =
-                        document
-                        .createElement(
+                        document.createElement(
                           "tr"
                         );
 
 
                       const priorityCell =
-                        document
-                        .createElement(
+                        document.createElement(
                           "td"
                         );
 
@@ -2707,23 +2712,18 @@ jobs:
                       ) {
 
                         const td =
-                          document
-                          .createElement(
+                          document.createElement(
                             "td"
                           );
-
 
                         td.className =
                           "metric-cell";
 
-
                         td.textContent =
                           count;
 
-
                         td.onclick =
                           callback;
-
 
                         row.appendChild(
                           td
@@ -2733,7 +2733,6 @@ jobs:
 
 
                       addMetricCell(
-
                         openedIssues(
                           sprint,
                           priority
@@ -2749,12 +2748,10 @@ jobs:
                             ),
                             "opened"
                           )
-
                       );
 
 
-                      projectData
-                        .statuses
+                      projectData.statuses
                         .forEach(
                           status => {
 
@@ -2767,7 +2764,6 @@ jobs:
 
 
                             addMetricCell(
-
                               issues.length,
 
                               () =>
@@ -2777,7 +2773,6 @@ jobs:
                                   issues,
                                   status
                                 )
-
                             );
 
                           }
@@ -2785,7 +2780,6 @@ jobs:
 
 
                       addMetricCell(
-
                         closedIssues(
                           sprint,
                           priority
@@ -2801,7 +2795,6 @@ jobs:
                             ),
                             "closed"
                           )
-
                       );
 
 
@@ -2812,8 +2805,14 @@ jobs:
                         );
 
 
-                      addMetricCell(
+                      const bugsClosed =
+                        bugClosedIssues(
+                          sprint,
+                          priority
+                        );
 
+
+                      addMetricCell(
                         bugsOpened.length,
 
                         () =>
@@ -2823,19 +2822,10 @@ jobs:
                             bugsOpened,
                             "opened"
                           )
-
                       );
 
 
-                      const bugsClosed =
-                        bugClosedIssues(
-                          sprint,
-                          priority
-                        );
-
-
                       addMetricCell(
-
                         bugsClosed.length,
 
                         () =>
@@ -2845,13 +2835,11 @@ jobs:
                             bugsClosed,
                             "closed"
                           )
-
                       );
 
 
                       const ratioCell =
-                        document
-                        .createElement(
+                        document.createElement(
                           "td"
                         );
 
@@ -2888,9 +2876,88 @@ jobs:
               }
 
 
-              /*
-               * Drilldown
-               */
+              function carriedFrom(
+                issue,
+                sprint
+              ) {
+
+                const entry =
+                  latestEntryIntoSprint(
+                    issue,
+                    sprint
+                  );
+
+
+                if (
+                  !entry
+                  ||
+                  entry.from
+                  ===
+                  "Backlog"
+                ) {
+
+                  return "";
+
+                }
+
+
+                return entry.from;
+
+              }
+
+
+              function entryType(
+                issue,
+                sprint
+              ) {
+
+                const entry =
+                  latestEntryIntoSprint(
+                    issue,
+                    sprint
+                  );
+
+
+                if (!entry) {
+                  return "";
+                }
+
+
+                if (
+                  entry.from
+                  ===
+                  "Backlog"
+                ) {
+
+                  return (
+                    entry.date
+                    >
+                    sprint.start
+                    ?
+                    "Added"
+                    :
+                    "Committed"
+                  );
+
+                }
+
+
+                return "Carryover";
+
+              }
+
+
+              function renderDates(dates) {
+
+                return dates
+                  .map(
+                    date =>
+                      escapeHtml(date)
+                  )
+                  .join("<br>");
+
+              }
+
 
               function openDrilldown(
                 title,
@@ -2899,33 +2966,30 @@ jobs:
                 highlightField = null
               ) {
 
-                document
-                  .getElementById(
-                    "drilldownTitle"
-                  )
-                  .textContent =
-                    title;
+                document.getElementById(
+                  "drilldownTitle"
+                ).textContent =
+                  title;
 
 
-                document
-                  .getElementById(
-                    "drilldownSubtitle"
-                  )
-                  .textContent =
-                    `${sprint.name} · ` +
-                    `${issues.length} issue` +
-                    `${
-                      issues.length === 1
-                      ?
-                      ""
-                      :
-                      "s"
-                    }`;
+                document.getElementById(
+                  "drilldownSubtitle"
+                ).textContent =
+                  `${sprint.name} · ` +
+                  `${issues.length} issue` +
+                  `${
+                    issues.length
+                    ===
+                    1
+                    ?
+                    ""
+                    :
+                    "s"
+                  }`;
 
 
                 const header =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "drilldownHeader"
                   );
 
@@ -2936,46 +3000,61 @@ jobs:
                 const columns = [
 
                   {
-                    label: "Issue",
+                    label:
+                      "Issue",
                     field: null
                   },
 
                   {
-                    label: "Title",
+                    label:
+                      "Title",
                     field: null
                   },
 
                   {
-                    label: "Priority",
+                    label:
+                      "Priority",
                     field: null
                   },
 
                   {
-                    label: "Type",
+                    label:
+                      "Type",
                     field: null
                   },
 
                   {
-                    label: "Open Date",
-                    field: "opened"
+                    label:
+                      "Sprint Entry",
+                    field: null
                   },
 
+                  {
+                    label:
+                      "Carried From",
+                    field: null
+                  },
 
-                  ...projectData
-                  .statuses
+                  {
+                    label:
+                      "Open Date",
+                    field:
+                      "opened"
+                  },
+
+                  ...projectData.statuses
                   .map(
                     status => ({
-
                       label: status,
                       field: status
-
                     })
                   ),
 
-
                   {
-                    label: "Close Date",
-                    field: "closed"
+                    label:
+                      "Close Date",
+                    field:
+                      "closed"
                   }
 
                 ];
@@ -2985,11 +3064,9 @@ jobs:
                   column => {
 
                     const th =
-                      document
-                      .createElement(
+                      document.createElement(
                         "th"
                       );
-
 
                     th.textContent =
                       column.label;
@@ -3001,11 +3078,9 @@ jobs:
                       highlightField
                     ) {
 
-                      th
-                        .classList
-                        .add(
-                          "highlight"
-                        );
+                      th.classList.add(
+                        "highlight"
+                      );
 
                     }
 
@@ -3019,15 +3094,13 @@ jobs:
 
 
                 const tbody =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "drilldownRows"
                   );
 
 
                 const empty =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "drilldownEmpty"
                   );
 
@@ -3050,8 +3123,7 @@ jobs:
                     issue => {
 
                       const row =
-                        document
-                        .createElement(
+                        document.createElement(
                           "tr"
                         );
 
@@ -3063,15 +3135,12 @@ jobs:
                       ) {
 
                         const td =
-                          document
-                          .createElement(
+                          document.createElement(
                             "td"
                           );
 
-
                         td.innerHTML =
                           html;
-
 
                         td.className =
                           className;
@@ -3083,11 +3152,9 @@ jobs:
                           highlightField
                         ) {
 
-                          td
-                            .classList
-                            .add(
-                              "highlight"
-                            );
+                          td.classList.add(
+                            "highlight"
+                          );
 
                         }
 
@@ -3100,19 +3167,15 @@ jobs:
 
 
                       addCell(
-
                         `
                         <a
                           class="issue-link"
-
                           href="${
                             escapeHtml(
                               issue.url
                             )
                           }"
-
                           target="_blank"
-
                           rel="noopener noreferrer">
 
                           ${
@@ -3127,11 +3190,8 @@ jobs:
 
                         </a>
                         `,
-
                         null,
-
                         "issue-column"
-
                       );
 
 
@@ -3160,6 +3220,26 @@ jobs:
 
                       addCell(
                         escapeHtml(
+                          entryType(
+                            issue,
+                            sprint
+                          )
+                        )
+                      );
+
+
+                      addCell(
+                        escapeHtml(
+                          carriedFrom(
+                            issue,
+                            sprint
+                          )
+                        )
+                      );
+
+
+                      addCell(
+                        escapeHtml(
                           issue.opened
                           ||
                           ""
@@ -3169,24 +3249,19 @@ jobs:
                       );
 
 
-                      projectData
-                        .statuses
+                      projectData.statuses
                         .forEach(
                           status => {
 
                             addCell(
-
                               renderDates(
                                 statusDates(
                                   issue,
                                   status
                                 )
                               ),
-
                               status,
-
                               "date-column"
-
                             );
 
                           }
@@ -3214,79 +3289,73 @@ jobs:
                 }
 
 
-                document
-                  .getElementById(
-                    "drilldownBackdrop"
-                  )
-                  .classList
-                  .remove(
-                    "hidden"
-                  );
+                document.getElementById(
+                  "drilldownBackdrop"
+                )
+                .classList
+                .remove(
+                  "hidden"
+                );
 
               }
 
 
               function closeDrilldown() {
 
-                document
-                  .getElementById(
-                    "drilldownBackdrop"
-                  )
-                  .classList
-                  .add(
-                    "hidden"
-                  );
+                document.getElementById(
+                  "drilldownBackdrop"
+                )
+                .classList
+                .add(
+                  "hidden"
+                );
 
               }
 
 
-              document
-                .getElementById(
-                  "closeDrilldown"
-                )
-                .onclick =
-                  closeDrilldown;
+              document.getElementById(
+                "closeDrilldown"
+              ).onclick =
+                closeDrilldown;
 
 
-              document
-                .getElementById(
-                  "drilldownBackdrop"
-                )
-                .addEventListener(
-                  "click",
-                  event => {
+              document.getElementById(
+                "drilldownBackdrop"
+              )
+              .addEventListener(
+                "click",
+                event => {
 
-                    if (
-                      event.target.id
-                      ===
-                      "drilldownBackdrop"
-                    ) {
+                  if (
+                    event.target.id
+                    ===
+                    "drilldownBackdrop"
+                  ) {
 
-                      closeDrilldown();
-
-                    }
+                    closeDrilldown();
 
                   }
-                );
+
+                }
+              );
 
 
-              document
-                .addEventListener(
-                  "keydown",
-                  event => {
+              document.addEventListener(
+                "keydown",
+                event => {
 
-                    if (
-                      event.key
-                      ===
-                      "Escape"
-                    ) {
+                  if (
+                    event.key
+                    ===
+                    "Escape"
+                  ) {
 
-                      closeDrilldown();
-
-                    }
+                    closeDrilldown();
 
                   }
-                );
+
+                }
+              );
 
 
               function updateSprint() {
@@ -3300,10 +3369,21 @@ jobs:
                 }
 
 
-                renderKpis(sprint);
-                renderFlowChart(sprint);
-                renderTypeChart(sprint);
-                renderPriorityTable(sprint);
+                renderHeadlineKpis(
+                  sprint
+                );
+
+                renderFlowChart(
+                  sprint
+                );
+
+                renderTypeChart(
+                  sprint
+                );
+
+                renderPriorityTable(
+                  sprint
+                );
 
               }
 
@@ -3315,7 +3395,8 @@ jobs:
                 fetch(
                   `data/${project.slug}.json?v=${cacheVersion}`,
                   {
-                    cache: "no-store"
+                    cache:
+                      "no-store"
                   }
                 )
 
@@ -3332,8 +3413,7 @@ jobs:
 
 
                     const select =
-                      document
-                      .getElementById(
+                      document.getElementById(
                         "sprintSelect"
                       );
 
@@ -3348,8 +3428,7 @@ jobs:
                       ) => {
 
                         const option =
-                          document
-                          .createElement(
+                          document.createElement(
                             "option"
                           );
 
@@ -3382,21 +3461,27 @@ jobs:
                       data.sprints
                       .findIndex(
                         sprint =>
-                          today >=
+                          today
+                          >=
                           sprint.start
                           &&
-                          today <=
+                          today
+                          <=
                           sprint.end
                       );
 
 
                     select.value =
-                      currentIndex >= 0
+                      currentIndex
+                      >=
+                      0
                       ?
                       currentIndex
                       :
                       Math.max(
-                        data.sprints.length - 1,
+                        data.sprints.length
+                        -
+                        1,
                         0
                       );
 
@@ -3412,7 +3497,8 @@ jobs:
               fetch(
                 `data/projects.json?v=${cacheVersion}`,
                 {
-                  cache: "no-store"
+                  cache:
+                    "no-store"
                 }
               )
 
@@ -3425,8 +3511,7 @@ jobs:
                 projects => {
 
                   const select =
-                    document
-                    .getElementById(
+                    document.getElementById(
                       "projectSelect"
                     );
 
@@ -3438,8 +3523,7 @@ jobs:
                     ) => {
 
                       const option =
-                        document
-                        .createElement(
+                        document.createElement(
                           "option"
                         );
 
@@ -3489,14 +3573,13 @@ jobs:
               );
 
 
-              document
-                .getElementById(
-                  "sprintSelect"
-                )
-                .addEventListener(
-                  "change",
-                  updateSprint
-                );
+              document.getElementById(
+                "sprintSelect"
+              )
+              .addEventListener(
+                "change",
+                updateSprint
+              );
 
 
               let resizeTimer = null;
@@ -3538,12 +3621,11 @@ jobs:
           echo "Checking generated dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
+          grep -q "Carried Over" site/index.html
+          grep -q "Committed" site/index.html
+          grep -q "Completion" site/index.html
           grep -q "Work by Type" site/index.html
-          grep -q "typeBreakdown" site/index.html
-          grep -q 'type:.*"doughnut"' site/index.html || true
-          grep -q "projectData.statuses" site/index.html
-          grep -q "Open Date" site/index.html
-          grep -q "Close Date" site/index.html
+          grep -q "Carried From" site/index.html
 
           echo "Dashboard HTML verified."
 

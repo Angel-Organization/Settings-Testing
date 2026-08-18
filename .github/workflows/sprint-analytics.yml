@@ -210,7 +210,6 @@ jobs:
                     }
 
                     content {
-
                       ... on Issue {
                         number
                         title
@@ -315,6 +314,48 @@ jobs:
               return "Unspecified"
 
 
+          history_cache = {}
+
+
+          def get_issue_history(repository, number):
+
+              cache_key = (
+                  f"{repository}#{number}"
+              )
+
+              if cache_key in history_cache:
+                  return history_cache[
+                      cache_key
+                  ]
+
+              owner, repo = (
+                  repository.split("/", 1)
+              )
+
+              history = graphql(
+                  TIMELINE_QUERY,
+                  {
+                      "owner": owner,
+                      "repo": repo,
+                      "number": number,
+                  },
+              )
+
+              nodes = (
+                  history["data"]
+                  ["repository"]
+                  ["issue"]
+                  ["timelineItems"]
+                  ["nodes"]
+              )
+
+              history_cache[
+                  cache_key
+              ] = nodes
+
+              return nodes
+
+
           def load_project(project):
 
               cursor = None
@@ -368,7 +409,6 @@ jobs:
 
                           name = field.get("name")
 
-                          # Dynamic project statuses
                           if name == "Status":
 
                               statuses = [
@@ -381,7 +421,6 @@ jobs:
                                   )
                               ]
 
-                          # Dynamic project priorities
                           if name == "Priority":
 
                               project_priorities = [
@@ -394,7 +433,6 @@ jobs:
                                   )
                               ]
 
-                          # Dynamic sprint / iteration field
                           config = (
                               field.get(
                                   "configuration"
@@ -531,7 +569,6 @@ jobs:
                   ]
 
 
-              # Load all project status transitions
               for index, issue in enumerate(
                   issues,
                   start=1,
@@ -544,33 +581,11 @@ jobs:
                       f'#{issue["number"]}'
                   )
 
-                  owner, repo = (
-                      issue["repository"]
-                      .split("/", 1)
-                  )
-
                   try:
 
-                      history = graphql(
-                          TIMELINE_QUERY,
-                          {
-                              "owner":
-                                  owner,
-
-                              "repo":
-                                  repo,
-
-                              "number":
-                                  issue["number"],
-                          },
-                      )
-
-                      nodes = (
-                          history["data"]
-                          ["repository"]
-                          ["issue"]
-                          ["timelineItems"]
-                          ["nodes"]
+                      nodes = get_issue_history(
+                          issue["repository"],
+                          issue["number"],
                       )
 
                       for event in nodes:
@@ -602,13 +617,14 @@ jobs:
                       )
 
 
-              # Build priority list
               actual_priorities = []
+
 
               for priority in DEFAULT_PRIORITIES:
 
                   if any(
-                      issue["priority"] == priority
+                      issue["priority"]
+                      == priority
                       for issue in issues
                   ):
                       actual_priorities.append(
@@ -638,6 +654,7 @@ jobs:
                       != "Unspecified"
                   )
               })
+
 
               actual_priorities.extend(
                   extra_priorities
@@ -743,14 +760,6 @@ jobs:
               )
           )
 
-
-          print(
-              json.dumps(
-                  output_projects,
-                  indent=2,
-              )
-          )
-
           PY
 
 
@@ -784,16 +793,19 @@ jobs:
               :root {
                 --blue: #2499e8;
                 --blue-dark: #177fc4;
+                --blue-deep: #0f5f98;
                 --blue-light: #eaf6fd;
 
                 --green: #49b94f;
-                --green-dark: #359b3d;
+                --green-dark: #2f8636;
                 --green-light: #edf9ef;
 
                 --navy: #172033;
-                --muted: #667085;
-                --border: #dce5eb;
-                --bg: #f4f8fa;
+                --text: #172033;
+                --muted: #5f6b7a;
+
+                --border: #d7e0e7;
+                --page-bg: #177fc4;
                 --card: #ffffff;
               }
 
@@ -808,10 +820,10 @@ jobs:
                 margin: 0;
 
                 background:
-                  var(--bg);
+                  var(--page-bg);
 
                 color:
-                  var(--navy);
+                  var(--text);
 
                 font-family:
                   Inter,
@@ -837,30 +849,26 @@ jobs:
 
               h1 {
                 margin:
-                  0 -32px 0;
+                  0 -32px;
 
                 padding:
-                  28px 32px;
+                  28px 32px 24px;
 
                 color:
-                  white;
+                  #ffffff;
 
                 background:
-                  linear-gradient(
-                    110deg,
-                    var(--blue-dark),
-                    var(--blue)
-                  );
+                  var(--blue-deep);
+
+                border-bottom:
+                  5px solid
+                  var(--green);
 
                 font-size:
                   30px;
 
                 font-weight:
-                  750;
-
-                border-bottom:
-                  5px solid
-                  var(--green);
+                  800;
               }
 
 
@@ -893,11 +901,7 @@ jobs:
                   18px 32px;
 
                 background:
-                  white;
-
-                border-bottom:
-                  1px solid
-                  var(--border);
+                  var(--blue-deep);
               }
 
 
@@ -906,44 +910,42 @@ jobs:
                   220px;
 
                 padding:
-                  10px 38px 10px 14px;
+                  10px 14px;
 
                 background:
-                  white;
+                  #ffffff;
 
                 color:
                   var(--navy);
 
                 border:
-                  1px solid
-                  var(--blue);
+                  2px solid
+                  #ffffff;
 
                 border-radius:
                   8px;
 
                 font-weight:
-                  600;
+                  700;
 
                 cursor:
                   pointer;
               }
 
 
-              select:hover {
+              select:focus {
+                outline:
+                  3px solid
+                  var(--green-light);
+
                 border-color:
                   var(--green);
               }
 
 
-              select:focus {
-                outline:
-                  3px solid
-                  var(--blue-light);
-
-                border-color:
-                  var(--blue-dark);
-              }
-
+              /* ==========================================
+                 KPI cards
+                 ========================================== */
 
               .kpis {
                 display:
@@ -953,7 +955,7 @@ jobs:
                   repeat(
                     auto-fit,
                     minmax(
-                      150px,
+                      170px,
                       1fr
                     )
                   );
@@ -962,17 +964,25 @@ jobs:
                   15px;
 
                 margin-bottom:
-                  20px;
+                  12px;
               }
 
 
               .card {
                 background:
-                  var(--card);
+                  #ffffff;
+
+                color:
+                  var(--text);
 
                 border:
                   1px solid
-                  var(--border);
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .35
+                  );
 
                 border-radius:
                   14px;
@@ -981,44 +991,20 @@ jobs:
                   18px;
 
                 box-shadow:
-                  0 2px 6px
+                  0 4px 14px
                   rgba(
-                    23,
-                    32,
-                    51,
-                    .04
+                    15,
+                    95,
+                    152,
+                    .16
                   );
               }
 
 
               .kpis .card {
-                position:
-                  relative;
-
-                overflow:
-                  hidden;
-
                 border-top:
                   4px solid
-                  var(--blue);
-              }
-
-
-              .kpis .card:nth-child(even) {
-                border-top-color:
                   var(--green);
-              }
-
-
-              .kpis .card:nth-child(odd) .number {
-                color:
-                  var(--blue-dark);
-              }
-
-
-              .kpis .card:nth-child(even) .number {
-                color:
-                  var(--green-dark);
               }
 
 
@@ -1028,7 +1014,6 @@ jobs:
 
                 transition:
                   transform .12s ease,
-                  border-color .12s ease,
                   box-shadow .12s ease;
               }
 
@@ -1037,56 +1022,26 @@ jobs:
                 transform:
                   translateY(-2px);
 
-                border-color:
-                  var(--blue);
-
                 box-shadow:
-                  0 8px 20px
+                  0 8px 22px
                   rgba(
-                    23,
-                    127,
-                    196,
-                    .12
+                    0,
+                    0,
+                    0,
+                    .18
                   );
-              }
-
-
-              .kpis .card:nth-child(even):hover {
-                border-color:
-                  var(--green);
-              }
-
-
-              .clickable::after {
-                content:
-                  "View issue data";
-
-                display:
-                  block;
-
-                margin-top:
-                  8px;
-
-                color:
-                  var(--green-dark);
-
-                font-size:
-                  11px;
-
-                font-weight:
-                  700;
               }
 
 
               .label {
                 color:
-                  var(--muted);
+                  #536174;
 
                 font-size:
                   11px;
 
                 font-weight:
-                  750;
+                  800;
 
                 text-transform:
                   uppercase;
@@ -1100,6 +1055,9 @@ jobs:
                 margin-top:
                   6px;
 
+                color:
+                  var(--navy);
+
                 font-size:
                   32px;
 
@@ -1107,6 +1065,98 @@ jobs:
                   800;
               }
 
+
+              /* ==========================================
+                 Secondary statuses
+                 ========================================== */
+
+              .secondary-statuses {
+                display:
+                  flex;
+
+                flex-wrap:
+                  wrap;
+
+                gap:
+                  8px;
+
+                margin:
+                  0 0 20px;
+              }
+
+
+              .status-chip {
+                display:
+                  inline-flex;
+
+                align-items:
+                  center;
+
+                gap:
+                  8px;
+
+                padding:
+                  7px 11px;
+
+                border:
+                  1px solid
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .55
+                  );
+
+                border-radius:
+                  999px;
+
+                background:
+                  #ffffff;
+
+                color:
+                  var(--navy);
+
+                font-size:
+                  12px;
+
+                font-weight:
+                  650;
+
+                cursor:
+                  pointer;
+
+                box-shadow:
+                  0 2px 6px
+                  rgba(
+                    0,
+                    0,
+                    0,
+                    .08
+                  );
+              }
+
+
+              .status-chip strong {
+                color:
+                  var(--blue-deep);
+
+                font-weight:
+                  800;
+              }
+
+
+              .status-chip:hover {
+                background:
+                  var(--green-light);
+
+                border-color:
+                  var(--green);
+              }
+
+
+              /* ==========================================
+                 Charts
+                 ========================================== */
 
               .grid {
                 display:
@@ -1123,7 +1173,7 @@ jobs:
               }
 
 
-              .grid .card {
+              .grid .card:first-child {
                 border-top:
                   4px solid
                   var(--blue);
@@ -1131,7 +1181,8 @@ jobs:
 
 
               .grid .card:nth-child(2) {
-                border-top-color:
+                border-top:
+                  4px solid
                   var(--green);
               }
 
@@ -1141,6 +1192,10 @@ jobs:
                   330px;
               }
 
+
+              /* ==========================================
+                 Priority table
+                 ========================================== */
 
               .table-wrap {
                 overflow-x:
@@ -1182,13 +1237,13 @@ jobs:
                   var(--blue-light);
 
                 color:
-                  var(--blue-dark);
+                  var(--blue-deep);
 
                 font-size:
                   11px;
 
                 font-weight:
-                  750;
+                  800;
 
                 text-transform:
                   uppercase;
@@ -1213,10 +1268,10 @@ jobs:
                   pointer;
 
                 color:
-                  var(--blue-dark);
+                  var(--blue-deep);
 
                 font-weight:
-                  700;
+                  750;
 
                 text-decoration:
                   underline dotted;
@@ -1227,13 +1282,17 @@ jobs:
 
 
               .metric-cell:hover {
-                color:
-                  var(--green-dark);
-
                 background:
                   var(--green-light);
+
+                color:
+                  var(--green-dark);
               }
 
+
+              /* ==========================================
+                 Drilldown
+                 ========================================== */
 
               .modal-backdrop {
                 position:
@@ -1262,7 +1321,7 @@ jobs:
                     15,
                     23,
                     42,
-                    .52
+                    .58
                   );
               }
 
@@ -1284,7 +1343,7 @@ jobs:
                   92vh;
 
                 background:
-                  white;
+                  #ffffff;
 
                 border-radius:
                   16px;
@@ -1298,7 +1357,7 @@ jobs:
                     0,
                     0,
                     0,
-                    .25
+                    .28
                   );
               }
 
@@ -1317,14 +1376,10 @@ jobs:
                   20px 24px;
 
                 color:
-                  white;
+                  #ffffff;
 
                 background:
-                  linear-gradient(
-                    110deg,
-                    var(--blue-dark),
-                    var(--blue)
-                  );
+                  var(--blue-deep);
 
                 border-bottom:
                   4px solid
@@ -1335,6 +1390,9 @@ jobs:
               .modal-header h2 {
                 margin:
                   0 0 4px;
+
+                color:
+                  #ffffff;
               }
 
 
@@ -1344,7 +1402,7 @@ jobs:
                     255,
                     255,
                     255,
-                    .82
+                    .88
                   );
               }
 
@@ -1366,7 +1424,7 @@ jobs:
                   transparent;
 
                 color:
-                  white;
+                  #ffffff;
 
                 font-size:
                   32px;
@@ -1385,18 +1443,6 @@ jobs:
 
                 z-index:
                   3;
-
-                background:
-                  var(--blue-light);
-
-                color:
-                  var(--blue-dark);
-
-                font-size:
-                  11px;
-
-                text-transform:
-                  uppercase;
               }
 
 
@@ -1435,13 +1481,13 @@ jobs:
 
               .issue-link {
                 color:
-                  var(--blue-dark);
+                  var(--blue-deep);
 
                 text-decoration:
                   none;
 
                 font-weight:
-                  700;
+                  750;
               }
 
 
@@ -1552,6 +1598,12 @@ jobs:
               </section>
 
 
+              <div
+                id="secondaryStatuses"
+                class="secondary-statuses">
+              </div>
+
+
               <div class="grid">
 
                 <section class="card">
@@ -1559,10 +1611,6 @@ jobs:
                   <h3>
                     Sprint Flow
                   </h3>
-
-                  <div class="muted">
-                    Click a bar to view issue data
-                  </div>
 
                   <div class="chart">
 
@@ -1580,10 +1628,6 @@ jobs:
                   <h3>
                     Bugs vs Enhancements
                   </h3>
-
-                  <div class="muted">
-                    Click a segment to view issue data
-                  </div>
 
                   <div class="chart">
 
@@ -1603,10 +1647,6 @@ jobs:
                 <h3>
                   Flow by Priority
                 </h3>
-
-                <div class="muted">
-                  Click any underlined count to drill down
-                </div>
 
                 <div class="table-wrap">
 
@@ -1823,7 +1863,8 @@ jobs:
 
 
                 return (
-                  projectData.sprints[index]
+                  projectData
+                  .sprints[index]
                   ||
                   null
                 );
@@ -1836,8 +1877,7 @@ jobs:
                 status
               ) {
 
-                return (
-                  issue.events
+                return issue.events
                   .filter(
                     event =>
                       event.status
@@ -1848,8 +1888,7 @@ jobs:
                     event =>
                       event.date
                   )
-                  .sort()
-                );
+                  .sort();
 
               }
 
@@ -1865,9 +1904,7 @@ jobs:
                         date
                       )
                   )
-                  .join(
-                    "<br>"
-                  );
+                  .join("<br>");
 
               }
 
@@ -1914,8 +1951,7 @@ jobs:
                 priority = null
               ) {
 
-                return (
-                  projectData
+                return projectData
                   .issues
                   .filter(
                     issue =>
@@ -1931,8 +1967,7 @@ jobs:
                         issue.opened,
                         sprint
                       )
-                  )
-                );
+                  );
 
               }
 
@@ -1942,8 +1977,7 @@ jobs:
                 priority = null
               ) {
 
-                return (
-                  projectData
+                return projectData
                   .issues
                   .filter(
                     issue =>
@@ -1959,8 +1993,7 @@ jobs:
                         issue.closed,
                         sprint
                       )
-                  )
-                );
+                  );
 
               }
 
@@ -1970,14 +2003,12 @@ jobs:
                 priority = null
               ) {
 
-                return (
-                  openedIssues(
-                    sprint,
-                    priority
-                  )
-                  .filter(
-                    isBug
-                  )
+                return openedIssues(
+                  sprint,
+                  priority
+                )
+                .filter(
+                  isBug
                 );
 
               }
@@ -1988,14 +2019,12 @@ jobs:
                 priority = null
               ) {
 
-                return (
-                  closedIssues(
-                    sprint,
-                    priority
-                  )
-                  .filter(
-                    isBug
-                  )
+                return closedIssues(
+                  sprint,
+                  priority
+                )
+                .filter(
+                  isBug
                 );
 
               }
@@ -2057,8 +2086,7 @@ jobs:
                   );
 
 
-                return (
-                  projectData
+                return projectData
                   .issues
                   .filter(
                     issue => {
@@ -2093,10 +2121,8 @@ jobs:
                         "enhancement"
                       ) {
 
-                        return (
-                          isEnhancement(
-                            issue
-                          )
+                        return isEnhancement(
+                          issue
                         );
 
                       }
@@ -2105,8 +2131,7 @@ jobs:
                       return true;
 
                     }
-                  )
-                );
+                  );
 
               }
 
@@ -2122,59 +2147,82 @@ jobs:
                   );
 
 
+                const secondary =
+                  document
+                  .getElementById(
+                    "secondaryStatuses"
+                  );
+
+
                 container.innerHTML =
                   "";
 
 
-                const items = [
+                secondary.innerHTML =
+                  "";
+
+
+                const statusMetrics =
+                  projectData
+                  .statuses
+                  .map(
+                    status => ({
+
+                      status:
+                        status,
+
+                      issues:
+                        matchingStatusIssues(
+                          sprint,
+                          status
+                        )
+
+                    })
+                  );
+
+
+                const primaryStatuses =
+                  statusMetrics
+                  .filter(
+                    item =>
+                      item.issues.length
+                      >
+                      0
+                  )
+                  .slice(
+                    0,
+                    4
+                  );
+
+
+                const primaryItems = [
 
                   {
                     label:
                       "Opened",
 
-                    count:
+                    issues:
                       openedIssues(
                         sprint
-                      ).length,
+                      ),
 
-                    click:
-                      () =>
-                        openDrilldown(
-                          "Opened",
-                          sprint,
-                          openedIssues(
-                            sprint
-                          ),
-                          "opened"
-                        )
+                    highlight:
+                      "opened"
                   },
 
 
-                  ...projectData
-                  .statuses
+                  ...primaryStatuses
                   .map(
-                    status => ({
+                    item => ({
 
                       label:
-                        status,
+                        item.status,
 
-                      count:
-                        matchingStatusIssues(
-                          sprint,
-                          status
-                        ).length,
+                      issues:
+                        item.issues,
 
-                      click:
-                        () =>
-                          openDrilldown(
-                            status,
-                            sprint,
-                            matchingStatusIssues(
-                              sprint,
-                              status
-                            ),
-                            status
-                          )
+                      highlight:
+                        item.status
 
                     })
                   ),
@@ -2184,74 +2232,167 @@ jobs:
                     label:
                       "Closed",
 
-                    count:
+                    issues:
                       closedIssues(
                         sprint
-                      ).length,
+                      ),
 
-                    click:
-                      () =>
-                        openDrilldown(
-                          "Closed",
-                          sprint,
-                          closedIssues(
-                            sprint
-                          ),
-                          "closed"
-                        )
+                    highlight:
+                      "closed"
                   }
 
                 ];
 
 
-                items.forEach(
-                  item => {
+                primaryItems
+                  .forEach(
+                    item => {
 
-                    const card =
-                      document
-                      .createElement(
-                        "div"
-                      );
-
-
-                    card.className =
-                      "card clickable";
+                      const card =
+                        document
+                        .createElement(
+                          "div"
+                        );
 
 
-                    card.innerHTML = `
-
-                      <div
-                        class="label">
-
-                        ${
-                          escapeHtml(
-                            item.label
-                          )
-                        }
-
-                      </div>
-
-                      <div
-                        class="number">
-
-                        ${item.count}
-
-                      </div>
-
-                    `;
+                      card.className =
+                        "card clickable";
 
 
-                    card.onclick =
-                      item.click;
+                      card.innerHTML = `
+
+                        <div
+                          class="label">
+
+                          ${
+                            escapeHtml(
+                              item.label
+                            )
+                          }
+
+                        </div>
+
+                        <div
+                          class="number">
+
+                          ${
+                            item
+                            .issues
+                            .length
+                          }
+
+                        </div>
+
+                      `;
 
 
-                    container
-                      .appendChild(
-                        card
-                      );
+                      card.onclick =
+                        () =>
+                          openDrilldown(
 
-                  }
-                );
+                            item.label,
+
+                            sprint,
+
+                            item.issues,
+
+                            item.highlight
+
+                          );
+
+
+                      container
+                        .appendChild(
+                          card
+                        );
+
+                    }
+                  );
+
+
+                const primaryNames =
+                  new Set(
+                    primaryStatuses
+                    .map(
+                      item =>
+                        item.status
+                    )
+                  );
+
+
+                statusMetrics
+                  .filter(
+                    item =>
+                      !primaryNames
+                      .has(
+                        item.status
+                      )
+                  )
+                  .forEach(
+                    item => {
+
+                      const chip =
+                        document
+                        .createElement(
+                          "button"
+                        );
+
+
+                      chip.className =
+                        "status-chip";
+
+
+                      chip.type =
+                        "button";
+
+
+                      chip.innerHTML = `
+
+                        <span>
+
+                          ${
+                            escapeHtml(
+                              item.status
+                            )
+                          }
+
+                        </span>
+
+                        <strong>
+
+                          ${
+                            item
+                            .issues
+                            .length
+                          }
+
+                        </strong>
+
+                      `;
+
+
+                      chip.onclick =
+                        () =>
+                          openDrilldown(
+
+                            item.status,
+
+                            sprint,
+
+                            item.issues,
+
+                            item.status
+
+                          );
+
+
+                      secondary
+                        .appendChild(
+                          chip
+                        );
+
+                    }
+                  );
 
               }
 
@@ -2281,7 +2422,10 @@ jobs:
                           [],
 
                         backgroundColor:
-                          []
+                          "#2499e8",
+
+                        borderWidth:
+                          0
 
                       }]
 
@@ -2332,10 +2476,15 @@ jobs:
 
 
                           openDrilldown(
+
                             descriptor.label,
+
                             sprint,
+
                             descriptor.issues(),
+
                             descriptor.highlight
+
                           );
 
                         }
@@ -2434,32 +2583,11 @@ jobs:
                     );
 
 
-                const colors = [
-                  "#2499e8",
-                  "#49b94f",
-                  "#177fc4",
-                  "#69c76f",
-                  "#5bb5ee",
-                  "#359b3d"
-                ];
-
-
                 flowChart
                   .data
                   .datasets[0]
                   .backgroundColor =
-                    descriptors
-                    .map(
-                      (
-                        item,
-                        index
-                      ) =>
-                        colors[
-                          index
-                          %
-                          colors.length
-                        ]
-                    );
+                    "#2499e8";
 
 
                 flowChart.update();
@@ -2545,7 +2673,8 @@ jobs:
 
                           openDrilldown(
 
-                            type === "bug"
+                            type ===
+                            "bug"
                             ?
                             "Bugs Worked On"
                             :
@@ -2629,27 +2758,28 @@ jobs:
                 ];
 
 
-                headers.forEach(
-                  name => {
+                headers
+                  .forEach(
+                    name => {
 
-                    const th =
-                      document
-                      .createElement(
-                        "th"
-                      );
-
-
-                    th.textContent =
-                      name;
+                      const th =
+                        document
+                        .createElement(
+                          "th"
+                        );
 
 
-                    header
-                      .appendChild(
-                        th
-                      );
+                      th.textContent =
+                        name;
 
-                  }
-                );
+
+                      header
+                        .appendChild(
+                          th
+                        );
+
+                    }
+                  );
 
 
                 const tbody =
@@ -2690,9 +2820,10 @@ jobs:
                         }</strong>`;
 
 
-                      row.appendChild(
-                        priorityCell
-                      );
+                      row
+                        .appendChild(
+                          priorityCell
+                        );
 
 
                       function addMetricCell(
@@ -2719,9 +2850,10 @@ jobs:
                           callback;
 
 
-                        row.appendChild(
-                          td
-                        );
+                        row
+                          .appendChild(
+                            td
+                          );
 
                       }
 
@@ -2854,10 +2986,8 @@ jobs:
                         bugsClosed.length
                         ===
                         0
-
                         ?
                         "—"
-
                         :
                         (
                           bugsOpened.length
@@ -2868,14 +2998,16 @@ jobs:
                         "x";
 
 
-                      row.appendChild(
-                        ratioCell
-                      );
+                      row
+                        .appendChild(
+                          ratioCell
+                        );
 
 
-                      tbody.appendChild(
-                        row
-                      );
+                      tbody
+                        .appendChild(
+                          row
+                        );
 
                     }
                   );
@@ -2903,10 +3035,13 @@ jobs:
                     "drilldownSubtitle"
                   )
                   .textContent =
+
                     `${sprint.name} · ` +
                     `${issues.length} issue` +
                     `${
-                      issues.length === 1
+                      issues.length
+                      ===
+                      1
                       ?
                       ""
                       :
@@ -2967,6 +3102,7 @@ jobs:
                       "opened"
                   },
 
+
                   ...projectData
                   .statuses
                   .map(
@@ -2981,6 +3117,7 @@ jobs:
                     })
                   ),
 
+
                   {
                     label:
                       "Close Date",
@@ -2992,49 +3129,43 @@ jobs:
                 ];
 
 
-                columns.forEach(
-                  column => {
+                columns
+                  .forEach(
+                    column => {
 
-                    const th =
-                      document
-                      .createElement(
-                        "th"
-                      );
-
-
-                    th.textContent =
-                      column.label;
+                      const th =
+                        document
+                        .createElement(
+                          "th"
+                        );
 
 
-                    if (
-                      column.field
-                    ) {
+                      th.textContent =
+                        column.label;
 
-                      th.dataset.field =
-                        column.field;
+
+                      if (
+                        column.field
+                        ===
+                        highlightField
+                      ) {
+
+                        th
+                          .classList
+                          .add(
+                            "highlight"
+                          );
+
+                      }
+
+
+                      header
+                        .appendChild(
+                          th
+                        );
 
                     }
-
-
-                    if (
-                      column.field
-                      ===
-                      highlightField
-                    ) {
-
-                      th.classList.add(
-                        "highlight"
-                      );
-
-                    }
-
-
-                    header.appendChild(
-                      th
-                    );
-
-                  }
-                );
+                  );
 
 
                 const tbody =
@@ -3068,171 +3199,185 @@ jobs:
                     "none";
 
 
-                  issues.forEach(
-                    issue => {
+                  issues
+                    .forEach(
+                      issue => {
 
-                      const row =
-                        document
-                        .createElement(
-                          "tr"
-                        );
-
-
-                      function addCell(
-                        html,
-                        field = null,
-                        className = ""
-                      ) {
-
-                        const td =
+                        const row =
                           document
                           .createElement(
-                            "td"
+                            "tr"
                           );
 
 
-                        td.innerHTML =
-                          html;
-
-
-                        td.className =
-                          className;
-
-
-                        if (
-                          field
+                        function addCell(
+                          html,
+                          field = null,
+                          className = ""
                         ) {
 
-                          td.dataset.field =
-                            field;
-
-                        }
-
-
-                        if (
-                          field
-                          ===
-                          highlightField
-                        ) {
-
-                          td.classList.add(
-                            "highlight"
-                          );
-
-                        }
-
-
-                        row.appendChild(
-                          td
-                        );
-
-                      }
-
-
-                      addCell(
-
-                        `
-                        <a
-                          class="issue-link"
-                          href="${escapeHtml(issue.url)}"
-                          target="_blank"
-                          rel="noopener noreferrer">
-
-                          ${
-                            escapeHtml(
-                              issue.repository
-                            )
-                          }#${
-                            escapeHtml(
-                              issue.number
-                            )
-                          }
-
-                        </a>
-                        `,
-
-                        null,
-
-                        "issue-column"
-
-                      );
-
-
-                      addCell(
-                        escapeHtml(
-                          issue.title
-                        ),
-                        null,
-                        "title-column"
-                      );
-
-
-                      addCell(
-                        escapeHtml(
-                          issue.priority
-                        )
-                      );
-
-
-                      addCell(
-                        escapeHtml(
-                          issue.issueType
-                        )
-                      );
-
-
-                      addCell(
-                        escapeHtml(
-                          issue.opened
-                          ||
-                          ""
-                        ),
-                        "opened",
-                        "date-column"
-                      );
-
-
-                      projectData
-                        .statuses
-                        .forEach(
-                          status => {
-
-                            addCell(
-
-                              renderDates(
-                                statusDates(
-                                  issue,
-                                  status
-                                )
-                              ),
-
-                              status,
-
-                              "date-column"
-
+                          const td =
+                            document
+                            .createElement(
+                              "td"
                             );
 
+
+                          td.innerHTML =
+                            html;
+
+
+                          td.className =
+                            className;
+
+
+                          if (
+                            field
+                            ===
+                            highlightField
+                          ) {
+
+                            td
+                              .classList
+                              .add(
+                                "highlight"
+                              );
+
                           }
+
+
+                          row
+                            .appendChild(
+                              td
+                            );
+
+                        }
+
+
+                        addCell(
+
+                          `
+                          <a
+                            class="issue-link"
+
+                            href="${
+                              escapeHtml(
+                                issue.url
+                              )
+                            }"
+
+                            target="_blank"
+
+                            rel="noopener noreferrer">
+
+                            ${
+                              escapeHtml(
+                                issue.repository
+                              )
+                            }#${
+                              escapeHtml(
+                                issue.number
+                              )
+                            }
+
+                          </a>
+                          `,
+
+                          null,
+
+                          "issue-column"
+
                         );
 
 
-                      addCell(
-                        escapeHtml(
-                          issue.closed
-                          ||
-                          ""
-                        ),
-                        "closed",
-                        "date-column"
-                      );
+                        addCell(
+
+                          escapeHtml(
+                            issue.title
+                          ),
+
+                          null,
+
+                          "title-column"
+
+                        );
 
 
-                      tbody.appendChild(
-                        row
-                      );
+                        addCell(
+                          escapeHtml(
+                            issue.priority
+                          )
+                        );
 
-                    }
-                  );
+
+                        addCell(
+                          escapeHtml(
+                            issue.issueType
+                          )
+                        );
+
+
+                        addCell(
+
+                          escapeHtml(
+                            issue.opened
+                            ||
+                            ""
+                          ),
+
+                          "opened",
+
+                          "date-column"
+
+                        );
+
+
+                        projectData
+                          .statuses
+                          .forEach(
+                            status => {
+
+                              addCell(
+
+                                renderDates(
+                                  statusDates(
+                                    issue,
+                                    status
+                                  )
+                                ),
+
+                                status,
+
+                                "date-column"
+
+                              );
+
+                            }
+                          );
+
+
+                        addCell(
+
+                          escapeHtml(
+                            issue.closed
+                            ||
+                            ""
+                          ),
+
+                          "closed",
+
+                          "date-column"
+
+                        );
+
+
+                        tbody
+                          .appendChild(
+                            row
+                          );
+
+                      }
+                    );
 
                 }
 
@@ -3318,9 +3463,7 @@ jobs:
                   selectedSprint();
 
 
-                if (
-                  !sprint
-                ) {
+                if (!sprint) {
                   return;
                 }
 
@@ -3397,6 +3540,7 @@ jobs:
 
 
                           option.textContent =
+
                             `${sprint.name} · ` +
                             `${sprint.start} – ` +
                             `${sprint.end}`;
@@ -3411,11 +3555,6 @@ jobs:
                       );
 
 
-                    /*
-                      Default to the sprint
-                      containing today's date.
-                    */
-
                     const today =
                       new Date()
                       .toISOString()
@@ -3429,16 +3568,20 @@ jobs:
                       data.sprints
                       .findIndex(
                         sprint =>
-                          today >=
+                          today
+                          >=
                           sprint.start
                           &&
-                          today <=
+                          today
+                          <=
                           sprint.end
                       );
 
 
                     select.value =
-                      currentIndex >= 0
+                      currentIndex
+                      >=
+                      0
                       ?
                       currentIndex
                       :
@@ -3496,6 +3639,7 @@ jobs:
 
 
                         option.textContent =
+
                           `${project.title} ` +
                           `(${project.issueCount} issues)`;
 
@@ -3563,6 +3707,7 @@ jobs:
 
           grep -q "Sprint Analytics" site/index.html
           grep -q "statusKpis" site/index.html
+          grep -q "secondaryStatuses" site/index.html
           grep -q "projectData.statuses" site/index.html
           grep -q "Open Date" site/index.html
           grep -q "Close Date" site/index.html

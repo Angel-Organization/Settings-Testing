@@ -1,0 +1,239 @@
+# This workflow leaves a comment on open issues in the configured GitHub
+# Project when they are added to a Sprint, removed from a Sprint, or moved
+# to a different Sprint
+#
+# It runs daily at 9:00 AM Eastern Daylight Time (13:00 UTC), or when
+# manually triggered
+#
+# Comments:
+# - Backlog -> Sprint 190
+# - Sprint 190 -> Sprint 191
+# - Sprint 191 -> Backlog
+#
+# It does not comment when:
+# - An issue remains in the same Sprint
+# - An issue remains in Backlog
+# - An issue is closed
+# - An issue is outside the configured project
+
+name: Comment Sprint Changes
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sprint-tracker:
+    runs-on: ubuntu-latest
+
+    # Defines which project this action will run on
+    env:
+      OWNER: Angel-Organization
+      OWNER_TYPE: organization
+      PROJECT_NUMBER: 1
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.ACTIONS_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+          owner: daw-systems
+          
+      - name: Query project and comment on sprint changes
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          # Github uses different roots for user and organization
+          # projects, so build the appropriate query
+          if [ "$OWNER_TYPE" = "organization" ]; then
+          
+          	QUERY='
+            query($owner: String!, $number: Int!) {
+              organization(login: $owner) {
+                projectV2(number: $number) {
+                
+                  # Get up to 100 open project items
+                  items(first: 100, query: "is:open") {
+                    nodes {
+                      content {
+                      
+                        # Only retrieve fields when the project item is an Issue
+                        ... on Issue {
+                          number
+                          state
+                          repository {
+                            name
+                            owner {
+                              login
+                            }
+                          }
+                        }
+                      }
+                      
+                      # Read the Sprint assigned to the issue
+                      fieldValues(first: 50) {
+                        nodes {
+                          ... on ProjectV2ItemFieldIterationValue {
+                            title
+                            field {
+                              ... on ProjectV2IterationField {
+                                name
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }'
+
+            # jq path to the project items for organization-owned projects
+            ROOT='.data.organization.projectV2.items.nodes'
+            
+          # This query only works for organization-owned projects
+          else
+            echo "OWNER_TYPE must be'organization'."
+            exit 1
+          fi
+
+          # Run the query and save the open issues found in the response
+          gh api graphql \
+            -f query="$QUERY" \
+            -F owner="$OWNER" \
+            -F number="$PROJECT_NUMBER" \
+            > project.json
+
+          # Loop through each open issue returned by the query
+          jq -c "$ROOT[]" project.json |
+          while IFS= read -r ITEM
+          do
+
+            # Pull out basic information about the issue
+            ISSUE_NUMBER=$(jq -r '.content.number // empty' <<< "$ITEM")
+            ISSUE_STATE=$(jq -r '.content.state // empty' <<< "$ITEM")
+            REPO_OWNER=$(jq -r '.content.repository.owner.login // empty' <<< "$ITEM")
+            REPO_NAME=$(jq -r '.content.repository.name // empty' <<< "$ITEM")
+
+            # Just in case, skip anything that isn't a normal issue
+            if [ -z "$ISSUE_NUMBER" ] || [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
+              continue
+            fi
+
+            # Just in case, ignore closed issues that shouldn't be updated
+            if [ "$ISSUE_STATE" != "OPEN" ]; then
+              continue
+            fi
+
+            # Find the issue's current Sprint
+            CURRENT_SPRINT=$(jq -r '
+              [
+                .fieldValues.nodes[]
+                | select(.field.name == "Sprint")
+                | .title
+              ][0] // empty
+            ' <<< "$ITEM")
+
+            # Treat issues with no Sprint as being in the Backlog
+            if [ -z "$CURRENT_SPRINT" ]; then
+              CURRENT_SPRINT="Backlog"
+            fi
+
+            # Get all of the comments on an issue
+            COMMENTS=$(gh api \
+              --paginate \
+              "repos/$REPO_OWNER/$REPO_NAME/issues/$ISSUE_NUMBER/comments")
+
+            # Find most recent sprint-tracker comment and extract Sprint from 
+            # hidden HTML comment
+            PREVIOUS_SPRINT=$(jq -rs '
+              [
+                .[][]
+                | {
+                    created_at: .created_at,
+                    sprint: (
+                      .body
+                      | try capture(
+                          "<!-- sprint-tracker:(?<value>.*?) -->"
+                        ).value
+                        catch empty
+                    )
+                  }
+                | select(.sprint != null and .sprint != "")
+              ]
+              | sort_by(.created_at)
+              | last
+              | .sprint // empty
+            ' <<< "$COMMENTS")
+
+            # The hidden marker stores the full transition
+            #
+            #   Sprint 190 -> Sprint 191
+            #
+            # Keep only the destination Sprint for comparison
+            if [[ "$PREVIOUS_SPRINT" == *"->"* ]]; then
+              PREVIOUS_SPRINT=$(
+                echo "$PREVIOUS_SPRINT" |
+                awk -F'->' '{print $NF}' |
+                xargs
+              )
+            fi
+
+            # First time we've seen this issue (no previous tracker comment)
+            if [ -z "$PREVIOUS_SPRINT" ]; then
+
+              # Do not comment if the issue is still in the Backlog
+              if [ "$CURRENT_SPRINT" = "Backlog" ]; then
+                echo "$REPO_OWNER/$REPO_NAME#$ISSUE_NUMBER remains in Backlog. No comment added."
+                continue
+              fi
+
+              # Otherwise,assume the issue moved from Backlog to its current Sprint
+              COMMENT_BODY=$(printf '%s\n\n%s\n\n%s' \
+                "<!-- sprint-tracker:Backlog -> $CURRENT_SPRINT -->" \
+                '**Sprint updated:**' \
+                "Backlog -> $CURRENT_SPRINT")
+
+              # Post comment to the issue
+              gh api \
+                "repos/$REPO_OWNER/$REPO_NAME/issues/$ISSUE_NUMBER/comments" \
+                --method POST \
+                -f body="$COMMENT_BODY"
+
+              echo "Recorded Backlog -> $CURRENT_SPRINT for $REPO_OWNER/$REPO_NAME#$ISSUE_NUMBER."
+              continue
+            fi
+            
+            # Do nothing when the Sprint has not changed
+            # This also prevents Backlog -> Backlog comments
+            if [ "$CURRENT_SPRINT" = "$PREVIOUS_SPRINT" ]; then
+              echo "$REPO_OWNER/$REPO_NAME#$ISSUE_NUMBER sprint unchanged."
+              continue
+            fi
+
+            # Build comment showing Sprint -> Sprint transition
+            COMMENT_BODY=$(printf '%s\n\n%s\n\n%s' \
+              "<!-- sprint-tracker:$PREVIOUS_SPRINT -> $CURRENT_SPRINT -->" \
+              '**Sprint updated:**' \
+              "$PREVIOUS_SPRINT -> $CURRENT_SPRINT")
+
+            # Post comment to the issue
+            gh api \
+              "repos/$REPO_OWNER/$REPO_NAME/issues/$ISSUE_NUMBER/comments" \
+              --method POST \
+              -f body="$COMMENT_BODY"
+
+            echo "Recorded $PREVIOUS_SPRINT -> $CURRENT_SPRINT for $REPO_OWNER/$REPO_NAME#$ISSUE_NUMBER."
+
+          done

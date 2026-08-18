@@ -600,14 +600,6 @@ jobs:
                   )
 
 
-              # ==========================================
-              # Status history
-              #
-              # IMPORTANT:
-              # Only keep status events belonging to
-              # THIS project.
-              # ==========================================
-
               for index, issue in enumerate(
                   issues,
                   start=1,
@@ -642,10 +634,6 @@ jobs:
                                   "number"
                               )
                           )
-
-                          # Critical project isolation:
-                          # ignore status changes that
-                          # happened in another project.
 
                           if (
                               event_project_number
@@ -1288,7 +1276,7 @@ jobs:
                     2fr
                   )
                   minmax(
-                    320px,
+                    360px,
                     1fr
                   );
 
@@ -1330,6 +1318,12 @@ jobs:
 
                 overflow:
                   hidden;
+              }
+
+
+              .type-chart {
+                height:
+                  330px;
               }
 
 
@@ -1748,7 +1742,8 @@ jobs:
                 }
 
 
-                .chart {
+                .chart,
+                .type-chart {
                   height:
                     280px;
                 }
@@ -1816,13 +1811,13 @@ jobs:
                 <section class="card">
 
                   <h3>
-                    Bugs vs Enhancements
+                    Work by Type
                   </h3>
 
-                  <div class="chart">
+                  <div class="chart type-chart">
 
                     <canvas
-                      id="mixChart">
+                      id="typeChart">
                     </canvas>
 
                   </div>
@@ -2003,42 +1998,6 @@ jobs:
               }
 
 
-              function isBug(
-                issue
-              ) {
-
-                return (
-                  (
-                    issue.issueType
-                    ||
-                    ""
-                  )
-                  .toLowerCase()
-                  ===
-                  "bug"
-                );
-
-              }
-
-
-              function isEnhancement(
-                issue
-              ) {
-
-                return (
-                  (
-                    issue.issueType
-                    ||
-                    ""
-                  )
-                  .toLowerCase()
-                  ===
-                  "enhancement"
-                );
-
-              }
-
-
               function selectedSprint() {
 
                 if (!projectData) {
@@ -2192,6 +2151,24 @@ jobs:
               }
 
 
+              function isBug(
+                issue
+              ) {
+
+                return (
+                  (
+                    issue.issueType
+                    ||
+                    ""
+                  )
+                  .toLowerCase()
+                  ===
+                  "bug"
+                );
+
+              }
+
+
               function bugOpenedIssues(
                 sprint,
                 priority = null
@@ -2224,9 +2201,16 @@ jobs:
               }
 
 
+              /* ==========================================
+                 Worked issues
+
+                 Worked means the issue either:
+                 - entered a project status during the sprint
+                 - or was closed during the sprint
+                 ========================================== */
+
               function workedIssues(
-                sprint,
-                type
+                sprint
               ) {
 
                 const ids =
@@ -2283,49 +2267,93 @@ jobs:
                 return projectData
                   .issues
                   .filter(
-                    issue => {
-
-                      if (
-                        !ids.has(
-                          issueId(
-                            issue
-                          )
+                    issue =>
+                      ids.has(
+                        issueId(
+                          issue
                         )
-                      ) {
-
-                        return false;
-
-                      }
-
-
-                      if (
-                        type ===
-                        "bug"
-                      ) {
-
-                        return isBug(
-                          issue
-                        );
-
-                      }
-
-
-                      if (
-                        type ===
-                        "enhancement"
-                      ) {
-
-                        return isEnhancement(
-                          issue
-                        );
-
-                      }
-
-
-                      return true;
-
-                    }
+                      )
                   );
+
+              }
+
+
+              function typeBreakdown(
+                sprint
+              ) {
+
+                const counts =
+                  {};
+
+
+                workedIssues(
+                  sprint
+                )
+                .forEach(
+                  issue => {
+
+                    const type =
+                      issue.issueType
+                      ||
+                      "Unspecified";
+
+
+                    counts[type] =
+                      (
+                        counts[type]
+                        ||
+                        0
+                      )
+                      +
+                      1;
+
+                  }
+                );
+
+
+                return Object
+                  .entries(
+                    counts
+                  )
+                  .map(
+                    (
+                      [
+                        type,
+                        count
+                      ]
+                    ) => ({
+                      type,
+                      count
+                    })
+                  )
+                  .sort(
+                    (a, b) =>
+                      b.count
+                      -
+                      a.count
+                  );
+
+              }
+
+
+              function issuesForType(
+                sprint,
+                type
+              ) {
+
+                return workedIssues(
+                  sprint
+                )
+                .filter(
+                  issue =>
+                    (
+                      issue.issueType
+                      ||
+                      "Unspecified"
+                    )
+                    ===
+                    type
+                );
 
               }
 
@@ -2581,6 +2609,10 @@ jobs:
               }
 
 
+              /* ==========================================
+                 Sprint Flow
+                 ========================================== */
+
               const flowChart =
                 new Chart(
                   document
@@ -2777,45 +2809,51 @@ jobs:
               }
 
 
-              const mixChart =
+              /* ==========================================
+                 Work by Type
+                 ========================================== */
+
+              const typeChart =
                 new Chart(
                   document
                   .getElementById(
-                    "mixChart"
+                    "typeChart"
                   ),
                   {
 
                     type:
-                      "doughnut",
+                      "bar",
 
                     data: {
 
-                      labels: [
-                        "Bugs",
-                        "Enhancements"
-                      ],
+                      labels:
+                        [],
 
                       datasets: [{
+
+                        label:
+                          "Worked Issues",
 
                         data:
                           [],
 
-                        backgroundColor: [
+                        backgroundColor:
                           "#2499e8",
-                          "#49b94f"
-                        ],
-
-                        borderColor:
-                          "#ffffff",
 
                         borderWidth:
-                          2
+                          0,
+
+                        borderRadius:
+                          5
 
                       }]
 
                     },
 
                     options: {
+
+                      indexAxis:
+                        "y",
 
                       responsive:
                         true,
@@ -2825,6 +2863,36 @@ jobs:
 
                       resizeDelay:
                         100,
+
+                      plugins: {
+
+                        legend: {
+                          display:
+                            false
+                        }
+
+                      },
+
+                      scales: {
+
+                        x: {
+                          beginAtZero:
+                            true,
+
+                          ticks: {
+                            precision:
+                              0
+                          }
+                        },
+
+                        y: {
+                          ticks: {
+                            autoSkip:
+                              false
+                          }
+                        }
+
+                      },
 
                       onClick:
                         (
@@ -2843,30 +2911,31 @@ jobs:
                             selectedSprint();
 
 
+                          const index =
+                            elements[0]
+                            .index;
+
+
                           const type =
-                            (
-                              elements[0]
-                              .index
-                              ===
-                              0
-                            )
-                            ?
-                            "bug"
-                            :
-                            "enhancement";
+                            typeChart
+                            .data
+                            .labels[
+                              index
+                            ];
+
+
+                          if (!type) {
+                            return;
+                          }
 
 
                           openDrilldown(
 
-                            type === "bug"
-                            ?
-                            "Bugs Worked On"
-                            :
-                            "Enhancements Worked On",
+                            type,
 
                             sprint,
 
-                            workedIssues(
+                            issuesForType(
                               sprint,
                               type
                             )
@@ -2881,32 +2950,68 @@ jobs:
                 );
 
 
-              function renderMixChart(
+              function renderTypeChart(
                 sprint
               ) {
 
-                mixChart
+                const breakdown =
+                  typeBreakdown(
+                    sprint
+                  );
+
+
+                typeChart
+                  .data
+                  .labels =
+                    breakdown
+                    .map(
+                      item =>
+                        item.type
+                    );
+
+
+                typeChart
                   .data
                   .datasets[0]
-                  .data = [
-
-                    workedIssues(
-                      sprint,
-                      "bug"
-                    ).length,
-
-                    workedIssues(
-                      sprint,
-                      "enhancement"
-                    ).length
-
-                  ];
+                  .data =
+                    breakdown
+                    .map(
+                      item =>
+                        item.count
+                    );
 
 
-                mixChart.update();
+                /*
+                  Give the chart more vertical space
+                  if a project has many issue types.
+                */
+
+                const typeChartContainer =
+                  document
+                  .querySelector(
+                    ".type-chart"
+                  );
+
+
+                typeChartContainer
+                  .style
+                  .height =
+                    `${Math.max(
+                      330,
+                      breakdown.length
+                      *
+                      42
+                    )}px`;
+
+
+                typeChart.update();
 
               }
 
+
+              /* ==========================================
+                 Priority table
+                 ========================================== */
 
               function renderPriorityTable(
                 sprint
@@ -3198,6 +3303,10 @@ jobs:
 
               }
 
+
+              /* ==========================================
+                 Drilldown
+                 ========================================== */
 
               function openDrilldown(
                 title,
@@ -3659,7 +3768,7 @@ jobs:
                 );
 
 
-                renderMixChart(
+                renderTypeChart(
                   sprint
                 );
 
@@ -3898,7 +4007,7 @@ jobs:
                         () => {
 
                           flowChart.resize();
-                          mixChart.resize();
+                          typeChart.resize();
 
                         },
                         150
@@ -3920,16 +4029,16 @@ jobs:
           echo "Checking generated dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
+          grep -q "Work by Type" site/index.html
+          grep -q "typeBreakdown" site/index.html
           grep -q "projectData.statuses" site/index.html
           grep -q "Open Date" site/index.html
           grep -q "Close Date" site/index.html
-          grep -q "event_project_number" site/index.html || true
 
           echo "Dashboard HTML verified."
 
           echo
-          echo "Checking generated project data..."
-
+          echo "Generated project data:"
           ls -la site/data
 
           echo

@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # 8:00 AM EDT / 7:00 AM EST
+    # Runs daily at 12:00 UTC.
+    # This is 8:00 AM EDT / 7:00 AM EST.
     - cron: "0 12 * * *"
 
 permissions:
@@ -20,6 +21,7 @@ concurrency:
 jobs:
 
   build:
+
     runs-on: ubuntu-latest
 
     env:
@@ -32,10 +34,10 @@ jobs:
 
 
       - name: Generate GitHub App token
+
         id: app-token
 
-        uses:
-          actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v3
 
         with:
           app-id: ${{ secrets.ACTIONS_APP_ID }}
@@ -47,15 +49,17 @@ jobs:
         uses: actions/configure-pages@v5
 
 
-      - name: Build capability-aware dashboard data
+      - name: Build dashboard data
 
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
         run: |
+
           mkdir -p site/data
 
           python3 <<'PY'
+
           import json
           import os
           import re
@@ -74,18 +78,9 @@ jobs:
           )
 
 
-          DEFAULT_PRIORITIES = [
-              "PROD Critical",
-              "P1",
-              "P2",
-              "P3",
-              "P4",
-          ]
-
-
-          # -------------------------------------------------
-          # GraphQL helper
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # GitHub GraphQL helper
+          # --------------------------------------------------
 
           def graphql(query, variables=None):
 
@@ -103,10 +98,10 @@ jobs:
 
                   if value is not None:
 
-                      cmd += [
+                      cmd.extend([
                           "-F",
                           f"{key}={value}",
-                      ]
+                      ])
 
 
               result = subprocess.run(
@@ -122,9 +117,9 @@ jobs:
               )
 
 
-          # -------------------------------------------------
-          # Project discovery
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # Queries
+          # --------------------------------------------------
 
           PROJECTS_QUERY = """
           query($org: String!) {
@@ -148,13 +143,6 @@ jobs:
           }
           """
 
-
-          # -------------------------------------------------
-          # Project definition + items
-          #
-          # This deliberately fetches multiple field-value
-          # types so different project configurations work.
-          # -------------------------------------------------
 
           PROJECT_QUERY = """
           query(
@@ -314,19 +302,6 @@ jobs:
 
                         }
 
-
-                        ... on ProjectV2ItemFieldMultiSelectValue {
-
-                          value
-
-                          field {
-                            ... on ProjectV2FieldCommon {
-                              name
-                            }
-                          }
-
-                        }
-
                       }
 
                     }
@@ -368,10 +343,6 @@ jobs:
           }
           """
 
-
-          # -------------------------------------------------
-          # Status history + sprint tracker comments
-          # -------------------------------------------------
 
           TIMELINE_QUERY = """
           query(
@@ -432,195 +403,94 @@ jobs:
           """
 
 
-          # -------------------------------------------------
-          # Field-name normalization
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # Helpers
+          # --------------------------------------------------
 
-          def normalize_name(value):
+          def normalize(value):
 
               return re.sub(
                   r"[^a-z0-9]+",
                   " ",
-                  (value or "").lower(),
+                  str(value or "").lower(),
               ).strip()
 
 
-          def find_field(
+          def field_by_alias(
               fields,
-              names=None,
-              data_type=None,
+              aliases,
+              expected_type=None,
           ):
 
-              names = {
-                  normalize_name(name)
-                  for name in (names or [])
+              alias_set = {
+                  normalize(alias)
+                  for alias in aliases
               }
 
 
-              # Prefer explicit semantic aliases.
-
               for field in fields:
 
-                  field_name = normalize_name(
-                      field.get("name")
-                  )
+                  if (
+                      normalize(
+                          field.get("name")
+                      )
+                      not in alias_set
+                  ):
 
-                  if names and field_name not in names:
                       continue
 
+
                   if (
-                      data_type
+                      expected_type
                       and
                       field.get("dataType")
                       !=
-                      data_type
+                      expected_type
                   ):
+
                       continue
 
+
                   return field
-
-
-              # If no explicit name is required,
-              # return the first field of this type.
-
-              if not names and data_type:
-
-                  for field in fields:
-
-                      if (
-                          field.get("dataType")
-                          ==
-                          data_type
-                      ):
-
-                          return field
 
 
               return None
 
 
-          # -------------------------------------------------
-          # Capability detection
-          # -------------------------------------------------
+          def iteration_field(fields):
 
-          def detect_capabilities(fields):
-
-              status = find_field(
+              field = field_by_alias(
                   fields,
-                  names=[
-                      "Status",
-                  ],
-                  data_type="SINGLE_SELECT",
-              )
-
-
-              sprint = find_field(
-                  fields,
-                  names=[
+                  [
                       "Sprint",
                       "Iteration",
                   ],
-                  data_type="ITERATION",
-              )
-
-              if not sprint:
-
-                  sprint = find_field(
-                      fields,
-                      data_type="ITERATION",
-                  )
-
-
-              priority = find_field(
-                  fields,
-                  names=[
-                      "Priority",
-                  ],
-                  data_type="SINGLE_SELECT",
+                  "ITERATION",
               )
 
 
-              size = find_field(
-                  fields,
-                  names=[
-                      "Size",
-                      "T-Shirt Size",
-                      "T Shirt Size",
-                      "Tshirt Size",
-                      "Shirt Size",
-                  ],
-                  data_type="SINGLE_SELECT",
-              )
+              if field:
+
+                  return field
 
 
-              loe = find_field(
-                  fields,
-                  names=[
-                      "LOE",
-                      "Level of Effort",
-                      "Level Of Effort",
-                      "Effort Days",
-                      "Estimated Days",
-                  ],
-                  data_type="NUMBER",
-              )
+              for candidate in fields:
+
+                  if (
+                      candidate.get("dataType")
+                      ==
+                      "ITERATION"
+                  ):
+
+                      return candidate
 
 
-              def descriptor(field):
-
-                  if not field:
-
-                      return {
-                          "available": False,
-                          "fieldName": None,
-                          "dataType": None,
-                      }
+              return None
 
 
-                  return {
-                      "available": True,
-                      "fieldName": field["name"],
-                      "dataType": field.get(
-                          "dataType"
-                      ),
-                  }
+          def item_values(item):
 
-
-              return {
-
-                  "status":
-                      descriptor(status),
-
-                  "sprint":
-                      descriptor(sprint),
-
-                  "priority":
-                      descriptor(priority),
-
-                  "size":
-                      descriptor(size),
-
-                  "loe":
-                      descriptor(loe),
-
-                  # Native GitHub Issue Type is not
-                  # a custom Project field.
-                  "issueType": {
-                      "available": True,
-                      "fieldName": "Issue Type",
-                      "dataType": "ISSUE_TYPE",
-                  },
-
-              }
-
-
-          # -------------------------------------------------
-          # Convert item field-values into a dictionary
-          # -------------------------------------------------
-
-          def item_field_values(item):
-
-              values = {}
+              output = {}
 
 
               for value in (
@@ -634,9 +504,11 @@ jobs:
                       or {}
                   )
 
-                  field_name = field.get("name")
+                  name = field.get("name")
 
-                  if not field_name:
+
+                  if not name:
+
                       continue
 
 
@@ -651,7 +523,9 @@ jobs:
                       "ProjectV2ItemFieldSingleSelectValue"
                   ):
 
-                      parsed = value.get("name")
+                      output[name] = (
+                          value.get("name")
+                      )
 
 
                   elif (
@@ -660,7 +534,9 @@ jobs:
                       "ProjectV2ItemFieldNumberValue"
                   ):
 
-                      parsed = value.get("number")
+                      output[name] = (
+                          value.get("number")
+                      )
 
 
                   elif (
@@ -669,7 +545,9 @@ jobs:
                       "ProjectV2ItemFieldIterationValue"
                   ):
 
-                      parsed = value.get("title")
+                      output[name] = (
+                          value.get("title")
+                      )
 
 
                   elif (
@@ -678,7 +556,9 @@ jobs:
                       "ProjectV2ItemFieldDateValue"
                   ):
 
-                      parsed = value.get("date")
+                      output[name] = (
+                          value.get("date")
+                      )
 
 
                   elif (
@@ -687,51 +567,31 @@ jobs:
                       "ProjectV2ItemFieldTextValue"
                   ):
 
-                      parsed = value.get("text")
+                      output[name] = (
+                          value.get("text")
+                      )
 
 
-                  elif (
-                      typename
-                      ==
-                      "ProjectV2ItemFieldMultiSelectValue"
-                  ):
-
-                      parsed = value.get("value")
+              return output
 
 
-                  else:
-
-                      continue
+          timeline_cache = {}
 
 
-                  values[field_name] = parsed
-
-
-              return values
-
-
-          # -------------------------------------------------
-          # Timeline cache
-          # -------------------------------------------------
-
-          history_cache = {}
-
-
-          def get_issue_timeline(
+          def issue_timeline(
               repository,
-              number,
+              issue_number,
           ):
 
-              cache_key = (
-                  f"{repository}#{number}"
+              key = (
+                  f"{repository}"
+                  f"#{issue_number}"
               )
 
 
-              if cache_key in history_cache:
+              if key in timeline_cache:
 
-                  return history_cache[
-                      cache_key
-                  ]
+                  return timeline_cache[key]
 
 
               owner, repo = (
@@ -739,18 +599,18 @@ jobs:
               )
 
 
-              history = graphql(
+              response = graphql(
                   TIMELINE_QUERY,
                   {
                       "owner": owner,
                       "repo": repo,
-                      "number": number,
+                      "number": issue_number,
                   },
               )
 
 
               nodes = (
-                  history["data"]
+                  response["data"]
                   ["repository"]
                   ["issue"]
                   ["timelineItems"]
@@ -758,17 +618,15 @@ jobs:
               )
 
 
-              history_cache[
-                  cache_key
-              ] = nodes
+              timeline_cache[key] = nodes
 
 
               return nodes
 
 
-          # -------------------------------------------------
-          # Discover open projects
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # Projects
+          # --------------------------------------------------
 
           result = graphql(
               PROJECTS_QUERY,
@@ -799,9 +657,9 @@ jobs:
           )
 
 
-          # -------------------------------------------------
-          # Build one project's data
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # Load one project
+          # --------------------------------------------------
 
           def load_project(project):
 
@@ -809,17 +667,9 @@ jobs:
 
               raw_items = []
 
+              raw_field_nodes = []
+
               metadata = None
-
-              fields = []
-
-              sprints = {}
-
-              status_options = []
-
-              priority_options = []
-
-              size_options = []
 
 
               while True:
@@ -849,6 +699,7 @@ jobs:
                   if metadata is None:
 
                       metadata = {
+
                           "number":
                               pv2["number"],
 
@@ -865,282 +716,13 @@ jobs:
 
                           "url":
                               pv2["url"],
+
                       }
 
 
-                      # Normalize field definitions.
-
-                      for raw_field in (
+                      raw_field_nodes = (
                           pv2["fields"]["nodes"]
-                      ):
-
-                          field = {
-                              "name":
-                                  raw_field.get(
-                                      "name"
-                                  ),
-
-                              "dataType":
-                                  raw_field.get(
-                                      "dataType"
-                                  ),
-
-                              "kind":
-                                  raw_field.get(
-                                      "__typename"
-                                  ),
-
-                              "options":
-                                  [
-                                      option["name"]
-                                      for option in (
-                                          raw_field.get(
-                                              "options",
-                                              []
-                                          )
-                                      )
-                                  ],
-                          }
-
-
-                          fields.append(field)
-
-
-                      capabilities = (
-                          detect_capabilities(
-                              fields
-                          )
                       )
-
-
-                      # Status options
-
-                      if (
-                          capabilities[
-                              "status"
-                          ][
-                              "available"
-                          ]
-                      ):
-
-                          field_name = (
-                              capabilities[
-                                  "status"
-                              ][
-                                  "fieldName"
-                              ]
-                          )
-
-                          field = next(
-                              (
-                                  item
-                                  for item in fields
-                                  if item["name"]
-                                  ==
-                                  field_name
-                              ),
-                              None,
-                          )
-
-                          status_options = (
-                              field.get(
-                                  "options",
-                                  []
-                              )
-                              if field
-                              else []
-                          )
-
-
-                      # Priority options
-
-                      if (
-                          capabilities[
-                              "priority"
-                          ][
-                              "available"
-                          ]
-                      ):
-
-                          field_name = (
-                              capabilities[
-                                  "priority"
-                              ][
-                                  "fieldName"
-                              ]
-                          )
-
-                          field = next(
-                              (
-                                  item
-                                  for item in fields
-                                  if item["name"]
-                                  ==
-                                  field_name
-                              ),
-                              None,
-                          )
-
-                          priority_options = (
-                              field.get(
-                                  "options",
-                                  []
-                              )
-                              if field
-                              else []
-                          )
-
-
-                      # Size options
-
-                      if (
-                          capabilities[
-                              "size"
-                          ][
-                              "available"
-                          ]
-                      ):
-
-                          field_name = (
-                              capabilities[
-                                  "size"
-                              ][
-                                  "fieldName"
-                              ]
-                          )
-
-                          field = next(
-                              (
-                                  item
-                                  for item in fields
-                                  if item["name"]
-                                  ==
-                                  field_name
-                              ),
-                              None,
-                          )
-
-                          size_options = (
-                              field.get(
-                                  "options",
-                                  []
-                              )
-                              if field
-                              else []
-                          )
-
-
-                      # Sprint configuration.
-
-                      if (
-                          capabilities[
-                              "sprint"
-                          ][
-                              "available"
-                          ]
-                      ):
-
-                          sprint_field_name = (
-                              capabilities[
-                                  "sprint"
-                              ][
-                                  "fieldName"
-                              ]
-                          )
-
-
-                          raw_sprint_field = next(
-                              (
-                                  raw_field
-                                  for raw_field in (
-                                      pv2[
-                                          "fields"
-                                      ][
-                                          "nodes"
-                                      ]
-                                  )
-                                  if (
-                                      raw_field.get(
-                                          "name"
-                                      )
-                                      ==
-                                      sprint_field_name
-                                  )
-                              ),
-                              None,
-                          )
-
-
-                          if raw_sprint_field:
-
-                              config = (
-                                  raw_sprint_field.get(
-                                      "configuration"
-                                  )
-                                  or {}
-                              )
-
-
-                              iterations = (
-                                  config.get(
-                                      "completedIterations",
-                                      []
-                                  )
-                                  +
-                                  config.get(
-                                      "iterations",
-                                      []
-                                  )
-                              )
-
-
-                              for sprint in iterations:
-
-                                  start = (
-                                      sprint[
-                                          "startDate"
-                                      ]
-                                  )
-
-                                  duration = (
-                                      sprint[
-                                          "duration"
-                                      ]
-                                  )
-
-
-                                  end = (
-                                      datetime
-                                      .fromisoformat(
-                                          start
-                                      )
-                                      +
-                                      timedelta(
-                                          days=
-                                              duration
-                                              -
-                                              1
-                                      )
-                                  ).date().isoformat()
-
-
-                                  sprints[
-                                      sprint["title"]
-                                  ] = {
-                                      "name":
-                                          sprint[
-                                              "title"
-                                          ],
-
-                                      "start":
-                                          start,
-
-                                      "end":
-                                          end,
-
-                                      "duration":
-                                          duration,
-                                  }
 
 
                   connection = pv2["items"]
@@ -1171,19 +753,184 @@ jobs:
                   )
 
 
-              capabilities = (
-                  detect_capabilities(
-                      fields
-                  )
+              # ------------------------------------------------
+              # Normalize project field definitions
+              # ------------------------------------------------
+
+              fields = []
+
+
+              for raw in raw_field_nodes:
+
+                  fields.append({
+
+                      "name":
+                          raw.get("name"),
+
+                      "dataType":
+                          raw.get("dataType"),
+
+                      "kind":
+                          raw.get("__typename"),
+
+                      "options": [
+                          option["name"]
+                          for option in (
+                              raw.get(
+                                  "options",
+                                  []
+                              )
+                          )
+                      ],
+
+                  })
+
+
+              status_field = field_by_alias(
+                  fields,
+                  ["Status"],
+                  "SINGLE_SELECT",
               )
 
 
+              sprint_field = iteration_field(
+                  fields
+              )
+
+
+              priority_field = field_by_alias(
+                  fields,
+                  [
+                      "Priority",
+                      "Initial Priority",
+                  ],
+                  "SINGLE_SELECT",
+              )
+
+
+              size_field = field_by_alias(
+                  fields,
+                  [
+                      "Size",
+                      "T-Shirt Size",
+                      "T Shirt Size",
+                      "Tshirt Size",
+                      "Shirt Size",
+                  ],
+                  "SINGLE_SELECT",
+              )
+
+
+              loe_field = field_by_alias(
+                  fields,
+                  [
+                      "LOE",
+                      "Level of Effort",
+                      "Level Of Effort",
+                      "Effort Days",
+                      "Estimated Days",
+                  ],
+                  "NUMBER",
+              )
+
+
+              # ------------------------------------------------
+              # Sprints
+              # ------------------------------------------------
+
+              sprints = {}
+
+
+              if sprint_field:
+
+                  raw_sprint_field = next(
+                      (
+                          field
+                          for field in raw_field_nodes
+                          if (
+                              field.get("name")
+                              ==
+                              sprint_field["name"]
+                          )
+                      ),
+                      None,
+                  )
+
+
+                  if raw_sprint_field:
+
+                      config = (
+                          raw_sprint_field.get(
+                              "configuration"
+                          )
+                          or {}
+                      )
+
+
+                      iterations = (
+                          config.get(
+                              "completedIterations",
+                              [],
+                          )
+                          +
+                          config.get(
+                              "iterations",
+                              [],
+                          )
+                      )
+
+
+                      for sprint in iterations:
+
+                          start = (
+                              sprint["startDate"]
+                          )
+
+                          duration = int(
+                              sprint["duration"]
+                          )
+
+                          end = (
+                              datetime
+                              .fromisoformat(start)
+                              +
+                              timedelta(
+                                  days=
+                                      duration
+                                      -
+                                      1
+                              )
+                          ).date().isoformat()
+
+
+                          sprints[
+                              sprint["title"]
+                          ] = {
+
+                              "name":
+                                  sprint["title"],
+
+                              "start":
+                                  start,
+
+                              "end":
+                                  end,
+
+                              "duration":
+                                  duration,
+
+                          }
+
+
+              # ------------------------------------------------
+              # Issues + observed field data
+              # ------------------------------------------------
+
               issues = []
 
+              observed_priorities = set()
+              observed_sizes = set()
 
-              # -------------------------------------------------
-              # Convert raw Project items into issue records
-              # -------------------------------------------------
 
               for item in raw_items:
 
@@ -1201,13 +948,8 @@ jobs:
 
                   repository = (
                       issue
-                      .get(
-                          "repository",
-                          {},
-                      )
-                      .get(
-                          "nameWithOwner"
-                      )
+                      .get("repository", {})
+                      .get("nameWithOwner")
                   )
 
 
@@ -1216,35 +958,85 @@ jobs:
                       continue
 
 
-                  values = (
-                      item_field_values(
-                          item
-                      )
+                  values = item_values(
+                      item
                   )
 
 
-                  def capability_value(
-                      capability_name
-                  ):
+                  priority = None
 
-                      capability = (
-                          capabilities[
-                              capability_name
-                          ]
+
+                  if priority_field:
+
+                      priority = values.get(
+                          priority_field["name"]
                       )
 
 
-                      if not capability[
-                          "available"
-                      ]:
+                  # Resilient fallback:
+                  # if capability discovery missed Priority,
+                  # inspect actual field-value names.
 
-                          return None
+                  if priority is None:
+
+                      for field_name, value in (
+                          values.items()
+                      ):
+
+                          if normalize(
+                              field_name
+                          ) in {
+                              "priority",
+                              "initial priority",
+                          }:
+
+                              priority = value
+                              break
 
 
-                      return values.get(
-                          capability[
-                              "fieldName"
-                          ]
+                  if priority is not None:
+
+                      observed_priorities.add(
+                          str(priority)
+                      )
+
+
+                  size = None
+
+
+                  if size_field:
+
+                      size = values.get(
+                          size_field["name"]
+                      )
+
+
+                  if size is not None:
+
+                      observed_sizes.add(
+                          str(size)
+                      )
+
+
+                  loe = None
+
+
+                  if loe_field:
+
+                      loe = values.get(
+                          loe_field["name"]
+                      )
+
+
+                  current_sprint = None
+
+
+                  if sprint_field:
+
+                      current_sprint = (
+                          values.get(
+                              sprint_field["name"]
+                          )
                       )
 
 
@@ -1278,6 +1070,24 @@ jobs:
                               "Unspecified"
                           ),
 
+                      "priority":
+                          (
+                              priority
+                              if priority
+                              is not None
+                              else
+                              "Unspecified"
+                          ),
+
+                      "size":
+                          size,
+
+                      "loe":
+                          loe,
+
+                      "currentSprint":
+                          current_sprint,
+
                       "opened":
                           issue[
                               "createdAt"
@@ -1288,38 +1098,16 @@ jobs:
                               issue[
                                   "closedAt"
                               ][:10]
-
                               if issue[
                                   "closedAt"
                               ]
-
                               else None
                           ),
 
-                      "priority":
-                          (
-                              capability_value(
-                                  "priority"
-                              )
-                              or
-                              "Unspecified"
-                          ),
-
-                      "size":
-                          capability_value(
-                              "size"
-                          ),
-
-                      "loe":
-                          capability_value(
-                              "loe"
-                          ),
-
-                      # Preserve every project field-value.
                       "fieldValues":
                           values,
 
-                      "events":
+                      "statusEvents":
                           [],
 
                       "sprintTransitions":
@@ -1328,11 +1116,11 @@ jobs:
                   })
 
 
-              # -------------------------------------------------
-              # Read timeline history
-              # -------------------------------------------------
+              # ------------------------------------------------
+              # Timeline data
+              # ------------------------------------------------
 
-              sprint_names = set(
+              known_sprints = set(
                   sprints.keys()
               )
 
@@ -1353,30 +1141,22 @@ jobs:
 
                   try:
 
-                      nodes = (
-                          get_issue_timeline(
-                              issue[
-                                  "repository"
-                              ],
-                              issue[
-                                  "number"
-                              ],
-                          )
+                      nodes = issue_timeline(
+                          issue["repository"],
+                          issue["number"],
                       )
 
 
-                      for event in nodes:
+                      for node in nodes:
 
-                          typename = (
-                              event.get(
-                                  "__typename"
-                              )
+                          typename = node.get(
+                              "__typename"
                           )
 
 
-                          # -------------------------------------
-                          # Project-specific status event
-                          # -------------------------------------
+                          # ------------------------------------
+                          # Project-specific status events
+                          # ------------------------------------
 
                           if (
                               typename
@@ -1385,9 +1165,7 @@ jobs:
                           ):
 
                               event_project = (
-                                  event.get(
-                                      "project"
-                                  )
+                                  node.get("project")
                                   or {}
                               )
 
@@ -1397,18 +1175,14 @@ jobs:
                                       "number"
                                   )
                                   !=
-                                  project[
-                                      "number"
-                                  ]
+                                  project["number"]
                               ):
 
                                   continue
 
 
-                              status = (
-                                  event.get(
-                                      "status"
-                                  )
+                              status = node.get(
+                                  "status"
                               )
 
 
@@ -1418,23 +1192,23 @@ jobs:
 
 
                               issue[
-                                  "events"
+                                  "statusEvents"
                               ].append({
 
                                   "status":
                                       status,
 
                                   "date":
-                                      event[
+                                      node[
                                           "createdAt"
                                       ][:10],
 
                               })
 
 
-                          # -------------------------------------
-                          # sprint-tracker comment
-                          # -------------------------------------
+                          # ------------------------------------
+                          # Sprint tracker comments
+                          # ------------------------------------
 
                           elif (
                               typename
@@ -1443,9 +1217,7 @@ jobs:
                           ):
 
                               body = (
-                                  event.get(
-                                      "body"
-                                  )
+                                  node.get("body")
                                   or ""
                               )
 
@@ -1461,7 +1233,6 @@ jobs:
                                       .strip()
                                   )
 
-
                                   to_value = (
                                       match
                                       .group(2)
@@ -1469,25 +1240,41 @@ jobs:
                                   )
 
 
-                                  # Ignore unrelated tracker data
-                                  # when neither side references
-                                  # this project's known sprints
-                                  # or Backlog.
+                                  # Keep a transition when at least
+                                  # one side clearly relates to this
+                                  # project's sprint configuration.
+                                  #
+                                  # This allows:
+                                  #
+                                  # Sprint 197 -> Sprint 199
+                                  #
+                                  # even if Sprint 197 is older and
+                                  # no longer in iteration config.
 
-                                  relevant_values = {
-                                      "Backlog",
-                                      *sprint_names,
-                                  }
-
-
-                                  if (
-                                      from_value
-                                      not in
-                                      relevant_values
-                                      and
+                                  destination_relevant = (
                                       to_value
-                                      not in
-                                      relevant_values
+                                      in known_sprints
+                                      or
+                                      to_value.lower()
+                                      ==
+                                      "backlog"
+                                  )
+
+
+                                  source_relevant = (
+                                      from_value
+                                      in known_sprints
+                                      or
+                                      from_value.lower()
+                                      ==
+                                      "backlog"
+                                  )
+
+
+                                  if not (
+                                      destination_relevant
+                                      or
+                                      source_relevant
                                   ):
 
                                       continue
@@ -1504,7 +1291,7 @@ jobs:
                                           to_value,
 
                                       "date":
-                                          event[
+                                          node[
                                               "createdAt"
                                           ][:10],
 
@@ -1512,18 +1299,18 @@ jobs:
 
 
                       issue[
-                          "events"
+                          "statusEvents"
                       ].sort(
-                          key=lambda x:
-                              x["date"]
+                          key=lambda event:
+                              event["date"]
                       )
 
 
                       issue[
                           "sprintTransitions"
                       ].sort(
-                          key=lambda x:
-                              x["date"]
+                          key=lambda event:
+                              event["date"]
                       )
 
 
@@ -1537,76 +1324,215 @@ jobs:
                       )
 
 
-              # -------------------------------------------------
-              # Priority list
-              # -------------------------------------------------
+              # ------------------------------------------------
+              # Status options
+              # ------------------------------------------------
+
+              statuses = []
+
+
+              if status_field:
+
+                  statuses.extend(
+                      status_field.get(
+                          "options",
+                          []
+                      )
+                  )
+
+
+              # Keep observed historical statuses too.
+
+              for issue in issues:
+
+                  for event in (
+                      issue["statusEvents"]
+                  ):
+
+                      status = event["status"]
+
+
+                      if status not in statuses:
+
+                          statuses.append(
+                              status
+                          )
+
+
+              # ------------------------------------------------
+              # Priority options
+              # ------------------------------------------------
 
               priorities = []
 
 
-              if (
-                  capabilities[
-                      "priority"
-                  ][
-                      "available"
-                  ]
-              ):
-
-                  for priority in (
-                      DEFAULT_PRIORITIES
-                  ):
-
-                      if (
-                          priority
-                          in
-                          priority_options
-                          or
-                          any(
-                              issue[
-                                  "priority"
-                              ]
-                              ==
-                              priority
-                              for issue in issues
-                          )
-                      ):
-
-                          priorities.append(
-                              priority
-                          )
-
-
-                  for priority in (
-                      priority_options
-                  ):
-
-                      if (
-                          priority
-                          not in priorities
-                      ):
-
-                          priorities.append(
-                              priority
-                          )
-
-
-                  extras = sorted({
-
-                      issue["priority"]
-
-                      for issue in issues
-
-                      if (
-                          issue["priority"]
-                          not in priorities
-                      )
-
-                  })
-
+              if priority_field:
 
                   priorities.extend(
-                      extras
+                      priority_field.get(
+                          "options",
+                          []
+                      )
                   )
+
+
+              for priority in sorted(
+                  observed_priorities
+              ):
+
+                  if priority not in priorities:
+
+                      priorities.append(
+                          priority
+                      )
+
+
+              if any(
+                  issue["priority"]
+                  ==
+                  "Unspecified"
+                  for issue in issues
+              ):
+
+                  if (
+                      "Unspecified"
+                      not in priorities
+                  ):
+
+                      priorities.append(
+                          "Unspecified"
+                      )
+
+
+              # ------------------------------------------------
+              # Size options
+              # ------------------------------------------------
+
+              sizes = []
+
+
+              if size_field:
+
+                  sizes.extend(
+                      size_field.get(
+                          "options",
+                          []
+                      )
+                  )
+
+
+              for size in sorted(
+                  observed_sizes
+              ):
+
+                  if size not in sizes:
+
+                      sizes.append(size)
+
+
+              # ------------------------------------------------
+              # Capabilities
+              # ------------------------------------------------
+
+              priority_available = (
+                  priority_field is not None
+                  or
+                  len(observed_priorities) > 0
+              )
+
+
+              capabilities = {
+
+                  "status": {
+                      "available":
+                          (
+                              status_field
+                              is not None
+                              or
+                              len(statuses)
+                              >
+                              0
+                          ),
+
+                      "fieldName":
+                          (
+                              status_field[
+                                  "name"
+                              ]
+                              if status_field
+                              else None
+                          ),
+                  },
+
+                  "sprint": {
+                      "available":
+                          sprint_field
+                          is not None,
+
+                      "fieldName":
+                          (
+                              sprint_field[
+                                  "name"
+                              ]
+                              if sprint_field
+                              else None
+                          ),
+                  },
+
+                  "priority": {
+                      "available":
+                          priority_available,
+
+                      "fieldName":
+                          (
+                              priority_field[
+                                  "name"
+                              ]
+                              if priority_field
+                              else None
+                          ),
+                  },
+
+                  "size": {
+                      "available":
+                          (
+                              size_field
+                              is not None
+                          ),
+
+                      "fieldName":
+                          (
+                              size_field[
+                                  "name"
+                              ]
+                              if size_field
+                              else None
+                          ),
+                  },
+
+                  "loe": {
+                      "available":
+                          (
+                              loe_field
+                              is not None
+                          ),
+
+                      "fieldName":
+                          (
+                              loe_field[
+                                  "name"
+                              ]
+                              if loe_field
+                              else None
+                          ),
+                  },
+
+                  "issueType": {
+                      "available":
+                          True,
+                  },
+
+              }
 
 
               return {
@@ -1623,18 +1549,18 @@ jobs:
                   "sprints":
                       sorted(
                           sprints.values(),
-                          key=lambda x:
-                              x["start"],
+                          key=lambda sprint:
+                              sprint["start"],
                       ),
 
                   "statuses":
-                      status_options,
+                      statuses,
 
                   "priorities":
                       priorities,
 
                   "sizes":
-                      size_options,
+                      sizes,
 
                   "issues":
                       issues,
@@ -1642,11 +1568,11 @@ jobs:
               }
 
 
-          # -------------------------------------------------
-          # Write each project JSON
-          # -------------------------------------------------
+          # --------------------------------------------------
+          # Write project data
+          # --------------------------------------------------
 
-          output_projects = []
+          project_index = []
 
 
           for project in projects:
@@ -1672,7 +1598,7 @@ jobs:
               )
 
 
-              output_projects.append({
+              project_index.append({
 
                   "number":
                       project["number"],
@@ -1696,11 +1622,6 @@ jobs:
                           data["issues"]
                       ),
 
-                  "sprintCount":
-                      len(
-                          data["sprints"]
-                      ),
-
                   "capabilities":
                       data[
                           "capabilities"
@@ -1713,15 +1634,17 @@ jobs:
               "site/data/projects.json"
           ).write_text(
               json.dumps(
-                  output_projects,
+                  project_index,
                   indent=2,
               )
           )
 
 
+          print("")
+          print("Projects generated:")
           print(
               json.dumps(
-                  output_projects,
+                  project_index,
                   indent=2,
               )
           )
@@ -1729,10 +1652,12 @@ jobs:
           PY
 
 
-      - name: Create capability-aware Sprint Analytics dashboard
+      - name: Create Sprint Analytics application
 
         run: |
+
           cat > site/index.html <<'EOF'
+
           <!doctype html>
 
           <html lang="en">
@@ -1743,7 +1668,7 @@ jobs:
 
             <meta
               name="viewport"
-              content="width=device-width,initial-scale=1"
+              content="width=device-width, initial-scale=1"
             >
 
             <meta
@@ -1776,16 +1701,16 @@ jobs:
 
               :root {
 
-                --blue:
+                --brand-blue:
                   #2499e8;
 
-                --blue-deep:
+                --brand-blue-deep:
                   #0f5f98;
 
-                --blue-light:
+                --brand-blue-light:
                   #eaf6fd;
 
-                --green:
+                --brand-green:
                   #49b94f;
 
                 --navy:
@@ -1795,13 +1720,16 @@ jobs:
                   #172033;
 
                 --muted:
-                  #5f6b7a;
+                  #667085;
 
                 --border:
                   #d7e0e7;
 
                 --page-bg:
                   #f4f6f8;
+
+                --card:
+                  #ffffff;
 
               }
 
@@ -1814,6 +1742,7 @@ jobs:
 
               html,
               body {
+
                 width:
                   100%;
 
@@ -1822,6 +1751,7 @@ jobs:
 
                 margin:
                   0;
+
               }
 
 
@@ -1864,19 +1794,30 @@ jobs:
               }
 
 
-              h1 {
+              .header {
 
                 margin:
                   0 -32px;
 
                 padding:
-                  28px 32px 24px;
+                  26px 32px 0;
 
                 background:
-                  var(--blue-deep);
+                  var(--brand-blue-deep);
 
                 color:
                   #ffffff;
+
+              }
+
+
+              .header h1 {
+
+                margin:
+                  0;
+
+                padding-bottom:
+                  20px;
 
                 font-size:
                   30px;
@@ -1887,13 +1828,80 @@ jobs:
               }
 
 
-              h3 {
+              .nav {
 
-                margin-top:
+                display:
+                  flex;
+
+                gap:
+                  6px;
+
+                overflow-x:
+                  auto;
+
+              }
+
+
+              .nav-button {
+
+                border:
                   0;
 
+                border-radius:
+                  8px 8px 0 0;
+
+                padding:
+                  11px 16px;
+
+                background:
+                  transparent;
+
                 color:
-                  var(--navy);
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .78
+                  );
+
+                font-size:
+                  13px;
+
+                font-weight:
+                  750;
+
+                cursor:
+                  pointer;
+
+                white-space:
+                  nowrap;
+
+              }
+
+
+              .nav-button:hover {
+
+                background:
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .10
+                  );
+
+                color:
+                  #ffffff;
+
+              }
+
+
+              .nav-button.active {
+
+                background:
+                  var(--page-bg);
+
+                color:
+                  var(--brand-blue-deep);
 
               }
 
@@ -1925,7 +1933,7 @@ jobs:
               select {
 
                 min-width:
-                  220px;
+                  240px;
 
                 max-width:
                   100%;
@@ -1952,6 +1960,39 @@ jobs:
               }
 
 
+              .view {
+
+                display:
+                  none;
+
+              }
+
+
+              .view.active {
+
+                display:
+                  block;
+
+              }
+
+
+              .section-title {
+
+                margin:
+                  4px 0 16px;
+
+                font-size:
+                  20px;
+
+                font-weight:
+                  800;
+
+                color:
+                  var(--navy);
+
+              }
+
+
               .kpis {
 
                 display:
@@ -1967,7 +2008,7 @@ jobs:
                   );
 
                 gap:
-                  15px;
+                  14px;
 
                 margin-bottom:
                   18px;
@@ -1981,7 +2022,7 @@ jobs:
                   0;
 
                 background:
-                  #ffffff;
+                  var(--card);
 
                 border:
                   1px solid
@@ -1999,7 +2040,7 @@ jobs:
                     23,
                     32,
                     51,
-                    .08
+                    .07
                   );
 
               }
@@ -2016,12 +2057,12 @@ jobs:
               .clickable:hover {
 
                 box-shadow:
-                  0 8px 22px
+                  0 7px 20px
                   rgba(
-                    0,
-                    0,
-                    0,
-                    .14
+                    23,
+                    32,
+                    51,
+                    .13
                   );
 
               }
@@ -2030,7 +2071,7 @@ jobs:
               .label {
 
                 color:
-                  #536174;
+                  #586577;
 
                 font-size:
                   11px;
@@ -2038,11 +2079,11 @@ jobs:
                 font-weight:
                   800;
 
+                letter-spacing:
+                  .045em;
+
                 text-transform:
                   uppercase;
-
-                letter-spacing:
-                  .04em;
 
               }
 
@@ -2056,7 +2097,7 @@ jobs:
                   var(--navy);
 
                 font-size:
-                  32px;
+                  31px;
 
                 font-weight:
                   800;
@@ -2078,62 +2119,7 @@ jobs:
               }
 
 
-              .status-row {
-
-                display:
-                  flex;
-
-                flex-wrap:
-                  wrap;
-
-                gap:
-                  8px;
-
-                margin:
-                  0 0 20px;
-
-              }
-
-
-              .status-chip {
-
-                padding:
-                  7px 11px;
-
-                border:
-                  1px solid
-                  var(--border);
-
-                border-radius:
-                  999px;
-
-                background:
-                  #ffffff;
-
-                color:
-                  var(--navy);
-
-                font-size:
-                  12px;
-
-                cursor:
-                  pointer;
-
-              }
-
-
-              .status-chip strong {
-
-                margin-left:
-                  6px;
-
-                color:
-                  var(--blue-deep);
-
-              }
-
-
-              .grid {
+              .grid-two {
 
                 display:
                   grid;
@@ -2157,16 +2143,16 @@ jobs:
               }
 
 
-              .optional-grid {
+              .grid-equal {
 
                 display:
                   grid;
 
                 grid-template-columns:
                   repeat(
-                    auto-fit,
+                    2,
                     minmax(
-                      320px,
+                      0,
                       1fr
                     )
                   );
@@ -2214,10 +2200,68 @@ jobs:
               }
 
 
-              .hidden {
+              h3 {
+
+                margin:
+                  0 0 16px;
+
+                color:
+                  var(--navy);
+
+              }
+
+
+              .status-row {
 
                 display:
-                  none !important;
+                  flex;
+
+                flex-wrap:
+                  wrap;
+
+                gap:
+                  8px;
+
+                margin-bottom:
+                  18px;
+
+              }
+
+
+              .status-chip {
+
+                padding:
+                  7px 11px;
+
+                border:
+                  1px solid
+                  var(--border);
+
+                border-radius:
+                  999px;
+
+                background:
+                  #ffffff;
+
+                color:
+                  var(--navy);
+
+                font-size:
+                  12px;
+
+                cursor:
+                  pointer;
+
+              }
+
+
+              .status-chip strong {
+
+                margin-left:
+                  6px;
+
+                color:
+                  var(--brand-blue-deep);
 
               }
 
@@ -2252,10 +2296,13 @@ jobs:
 
                 border-bottom:
                   1px solid
-                  #eef1f5;
+                  #edf0f4;
 
                 text-align:
                   right;
+
+                vertical-align:
+                  top;
 
                 white-space:
                   nowrap;
@@ -2266,10 +2313,10 @@ jobs:
               th {
 
                 background:
-                  var(--blue-light);
+                  var(--brand-blue-light);
 
                 color:
-                  var(--blue-deep);
+                  var(--brand-blue-deep);
 
                 font-size:
                   11px;
@@ -2295,16 +2342,41 @@ jobs:
               .metric-cell {
 
                 color:
-                  var(--blue-deep);
+                  var(--brand-blue-deep);
 
                 font-weight:
                   750;
 
+                text-decoration:
+                  underline dotted;
+
+                text-underline-offset:
+                  3px;
+
                 cursor:
                   pointer;
 
-                text-decoration:
-                  underline dotted;
+              }
+
+
+              .empty {
+
+                padding:
+                  36px;
+
+                text-align:
+                  center;
+
+                color:
+                  var(--muted);
+
+              }
+
+
+              .hidden {
+
+                display:
+                  none !important;
 
               }
 
@@ -2363,6 +2435,15 @@ jobs:
                 border-radius:
                   16px;
 
+                box-shadow:
+                  0 30px 80px
+                  rgba(
+                    0,
+                    0,
+                    0,
+                    .28
+                  );
+
               }
 
 
@@ -2371,17 +2452,17 @@ jobs:
                 display:
                   flex;
 
-                justify-content:
-                  space-between;
-
                 align-items:
                   center;
+
+                justify-content:
+                  space-between;
 
                 padding:
                   20px 24px;
 
                 background:
-                  var(--blue-deep);
+                  var(--brand-blue-deep);
 
                 color:
                   #ffffff;
@@ -2392,18 +2473,23 @@ jobs:
               .modal-header h2 {
 
                 margin:
-                  0;
+                  0 0 3px;
 
               }
 
 
-              .modal-body {
+              .modal-subtitle {
 
-                max-height:
-                  78vh;
+                font-size:
+                  12px;
 
-                overflow:
-                  auto;
+                color:
+                  rgba(
+                    255,
+                    255,
+                    255,
+                    .84
+                  );
 
               }
 
@@ -2428,6 +2514,17 @@ jobs:
               }
 
 
+              .modal-body {
+
+                max-height:
+                  78vh;
+
+                overflow:
+                  auto;
+
+              }
+
+
               .drilldown-table {
 
                 width:
@@ -2448,7 +2545,7 @@ jobs:
                   0;
 
                 z-index:
-                  3;
+                  4;
 
               }
 
@@ -2456,7 +2553,7 @@ jobs:
               .issue-link {
 
                 color:
-                  var(--blue-deep);
+                  var(--brand-blue-deep);
 
                 text-decoration:
                   none;
@@ -2473,7 +2570,7 @@ jobs:
                   280px;
 
                 max-width:
-                  400px;
+                  420px;
 
                 white-space:
                   normal;
@@ -2485,7 +2582,7 @@ jobs:
 
 
               @media(
-                max-width:900px
+                max-width: 900px
               ) {
 
                 main {
@@ -2496,10 +2593,16 @@ jobs:
                 }
 
 
-                h1 {
+                .header {
 
                   margin:
                     0 -18px;
+
+                  padding-left:
+                    18px;
+
+                  padding-right:
+                    18px;
 
                 }
 
@@ -2515,17 +2618,6 @@ jobs:
                 }
 
 
-                .grid {
-
-                  grid-template-columns:
-                    minmax(
-                      0,
-                      1fr
-                    );
-
-                }
-
-
                 select {
 
                   width:
@@ -2533,6 +2625,18 @@ jobs:
 
                   min-width:
                     0;
+
+                }
+
+
+                .grid-two,
+                .grid-equal {
+
+                  grid-template-columns:
+                    minmax(
+                      0,
+                      1fr
+                    );
 
                 }
 
@@ -2548,9 +2652,53 @@ jobs:
             <main>
 
 
-              <h1>
-                Sprint Analytics
-              </h1>
+              <header class="header">
+
+                <h1>
+                  Sprint Analytics
+                </h1>
+
+
+                <nav class="nav">
+
+                  <button
+                    class="nav-button"
+                    data-view="overview">
+
+                    Overview
+
+                  </button>
+
+
+                  <button
+                    class="nav-button"
+                    data-view="flow">
+
+                    Flow
+
+                  </button>
+
+
+                  <button
+                    class="nav-button"
+                    data-view="scope">
+
+                    Scope &amp; Carryover
+
+                  </button>
+
+
+                  <button
+                    class="nav-button"
+                    data-view="quality">
+
+                    Quality
+
+                  </button>
+
+                </nav>
+
+              </header>
 
 
               <div class="toolbar">
@@ -2566,24 +2714,108 @@ jobs:
               </div>
 
 
+              <!-- ======================================
+                   OVERVIEW
+                   ====================================== -->
+
               <section
-                id="headlineKpis"
-                class="kpis">
+                id="view-overview"
+                class="view">
+
+                <div class="section-title">
+                  Sprint Overview
+                </div>
+
+
+                <div
+                  id="overviewKpis"
+                  class="kpis">
+                </div>
+
+
+                <div class="grid-two">
+
+
+                  <div class="card">
+
+                    <h3>
+                      Work by Type
+                    </h3>
+
+                    <div class="chart">
+
+                      <canvas
+                        id="typeChart">
+                      </canvas>
+
+                    </div>
+
+                  </div>
+
+
+                  <div
+                    id="sizeCard"
+                    class="card">
+
+                    <h3>
+                      Work by Size
+                    </h3>
+
+                    <div class="chart">
+
+                      <canvas
+                        id="sizeChart">
+                      </canvas>
+
+                    </div>
+
+                  </div>
+
+
+                </div>
+
+
+                <div
+                  id="overviewLoeCard"
+                  class="card">
+
+                  <h3>
+                    Effort Overview
+                  </h3>
+
+                  <div
+                    id="overviewLoeKpis"
+                    class="kpis">
+                  </div>
+
+                </div>
+
               </section>
 
 
-              <div
-                id="statusRow"
-                class="status-row">
-              </div>
+              <!-- ======================================
+                   FLOW
+                   ====================================== -->
+
+              <section
+                id="view-flow"
+                class="view">
+
+                <div class="section-title">
+                  Workflow
+                </div>
 
 
-              <div class="grid">
+                <div
+                  id="statusRow"
+                  class="status-row">
+                </div>
 
 
-                <section
-                  id="flowCard"
-                  class="card">
+                <div
+                  id="flowChartCard"
+                  class="card"
+                  style="margin-bottom:18px;">
 
                   <h3>
                     Sprint Flow
@@ -2597,95 +2829,145 @@ jobs:
 
                   </div>
 
-                </section>
+                </div>
 
 
-                <section
-                  id="typeCard"
+                <div
+                  id="priorityCard"
                   class="card">
 
                   <h3>
-                    Work by Type
+                    Flow by Priority
                   </h3>
 
-                  <div class="chart">
 
-                    <canvas
-                      id="typeChart">
-                    </canvas>
+                  <div class="table-wrap">
+
+                    <table>
+
+                      <thead>
+
+                        <tr
+                          id="priorityHeader">
+                        </tr>
+
+                      </thead>
+
+
+                      <tbody
+                        id="priorityRows">
+                      </tbody>
+
+                    </table>
 
                   </div>
 
-                </section>
+                </div>
+
+              </section>
 
 
-              </div>
+              <!-- ======================================
+                   SCOPE
+                   ====================================== -->
+
+              <section
+                id="view-scope"
+                class="view">
+
+                <div class="section-title">
+                  Scope &amp; Carryover
+                </div>
 
 
-              <div class="optional-grid">
+                <div
+                  id="scopeKpis"
+                  class="kpis">
+                </div>
 
 
-                <section
-                  id="sizeCard"
-                  class="card hidden">
-
-                  <h3>
-                    Work by Size
-                  </h3>
-
-                  <div class="chart">
-
-                    <canvas
-                      id="sizeChart">
-                    </canvas>
-
-                  </div>
-
-                </section>
-
-
-                <section
-                  id="loeCard"
-                  class="card hidden">
+                <div
+                  id="scopeLoeCard"
+                  class="card">
 
                   <h3>
-                    LOE
+                    Scope by LOE
                   </h3>
 
                   <div
-                    id="loeKpis"
+                    id="scopeLoeKpis"
                     class="kpis">
                   </div>
 
-                </section>
+                </div>
+
+              </section>
 
 
-              </div>
-
+              <!-- ======================================
+                   QUALITY
+                   ====================================== -->
 
               <section
-                id="priorityCard"
-                class="card">
+                id="view-quality"
+                class="view">
 
-                <h3>
-                  Flow by Priority
-                </h3>
+                <div class="section-title">
+                  Quality
+                </div>
 
-                <div class="table-wrap">
 
-                  <table>
+                <div
+                  id="qualityKpis"
+                  class="kpis">
+                </div>
 
-                    <thead>
-                      <tr
-                        id="priorityHeader">
-                      </tr>
-                    </thead>
 
-                    <tbody
-                      id="priorityRows">
-                    </tbody>
+                <div
+                  id="qualityPriorityCard"
+                  class="card">
 
-                  </table>
+                  <h3>
+                    Bugs by Priority
+                  </h3>
+
+
+                  <div class="table-wrap">
+
+                    <table>
+
+                      <thead>
+
+                        <tr>
+
+                          <th>
+                            Priority
+                          </th>
+
+                          <th>
+                            Bugs Opened
+                          </th>
+
+                          <th>
+                            Bugs Closed
+                          </th>
+
+                          <th>
+                            C/R
+                          </th>
+
+                        </tr>
+
+                      </thead>
+
+
+                      <tbody
+                        id="qualityPriorityRows">
+                      </tbody>
+
+                    </table>
+
+                  </div>
 
                 </div>
 
@@ -2694,6 +2976,10 @@ jobs:
 
             </main>
 
+
+            <!-- ========================================
+                 DRILLDOWN
+                 ======================================== -->
 
             <div
               id="drilldownBackdrop"
@@ -2711,7 +2997,8 @@ jobs:
                     </h2>
 
                     <div
-                      id="drilldownSubtitle">
+                      id="drilldownSubtitle"
+                      class="modal-subtitle">
                     </div>
 
                   </div>
@@ -2719,8 +3006,11 @@ jobs:
 
                   <button
                     id="closeDrilldown"
-                    class="close-button">
+                    class="close-button"
+                    type="button">
+
                     ×
+
                   </button>
 
                 </div>
@@ -2738,6 +3028,7 @@ jobs:
                       </tr>
 
                     </thead>
+
 
                     <tbody
                       id="drilldownRows">
@@ -2759,60 +3050,35 @@ jobs:
                 null;
 
 
+              let projectsIndex =
+                [];
+
+
               const cacheVersion =
                 Date.now();
 
 
-              // --------------------------------------------
-              // Utility
-              // --------------------------------------------
+              const TYPE_COLORS = [
 
-              function cap(name) {
+                "#2499e8",
+                "#49b94f",
+                "#0f5f98",
+                "#7bc8f6",
+                "#8fd694",
+                "#506784",
+                "#b8dff7",
+                "#86a9c4",
+                "#a7d9aa",
+                "#36566f",
+                "#5ab5ef",
+                "#72c879"
 
-                return (
-                  projectData
-                  ?.capabilities
-                  ?.[name]
-                  ?.available
-                  ===
-                  true
-                );
-
-              }
-
-
-              function within(
-                date,
-                sprint
-              ) {
-
-                return (
-                  date
-                  &&
-                  date
-                  >=
-                  sprint.start
-                  &&
-                  date
-                  <=
-                  sprint.end
-                );
-
-              }
+              ];
 
 
-              function issueId(issue) {
-
-                return (
-                  issue.repository
-                  +
-                  "#"
-                  +
-                  issue.number
-                );
-
-              }
-
+              // ===========================================
+              // Basic helpers
+              // ===========================================
 
               function escapeHtml(value) {
 
@@ -2838,6 +3104,115 @@ jobs:
                 .replaceAll(
                   "'",
                   "&#039;"
+                );
+
+              }
+
+
+              function cap(name) {
+
+                return (
+                  projectData
+                  ?.capabilities
+                  ?.[name]
+                  ?.available
+                  ===
+                  true
+                );
+
+              }
+
+
+              function issueId(issue) {
+
+                return (
+                  issue.repository
+                  +
+                  "#"
+                  +
+                  issue.number
+                );
+
+              }
+
+
+              function within(
+                date,
+                sprint
+              ) {
+
+                return Boolean(
+                  date
+                  &&
+                  date >= sprint.start
+                  &&
+                  date <= sprint.end
+                );
+
+              }
+
+
+              function formatDays(value) {
+
+                const number =
+                  Number(value);
+
+
+                if (
+                  !Number.isFinite(
+                    number
+                  )
+                ) {
+
+                  return "0 days";
+
+                }
+
+
+                return (
+                  number
+                  .toFixed(1)
+                  .replace(
+                    /\.0$/,
+                    ""
+                  )
+                  +
+                  " days"
+                );
+
+              }
+
+
+              function sumLoe(issues) {
+
+                return issues.reduce(
+                  (
+                    total,
+                    issue
+                  ) => {
+
+                    const value =
+                      Number(
+                        issue.loe
+                      );
+
+
+                    return (
+                      total
+                      +
+                      (
+                        Number.isFinite(
+                          value
+                        )
+                        ?
+                        value
+                        :
+                        0
+                      )
+                    );
+
+                  },
+                  0
                 );
 
               }
@@ -2872,31 +3247,64 @@ jobs:
               }
 
 
-              // --------------------------------------------
-              // Sprint entry / carryover
-              // --------------------------------------------
+              function localToday() {
 
-              function sprintEntries(
-                issue,
-                sprint
-              ) {
+                const now =
+                  new Date();
+
+
+                const year =
+                  now.getFullYear();
+
+
+                const month =
+                  String(
+                    now.getMonth()
+                    +
+                    1
+                  )
+                  .padStart(
+                    2,
+                    "0"
+                  );
+
+
+                const day =
+                  String(
+                    now.getDate()
+                  )
+                  .padStart(
+                    2,
+                    "0"
+                  );
+
 
                 return (
-                  issue
-                  .sprintTransitions
+                  `${year}-`
+                  +
+                  `${month}-`
+                  +
+                  `${day}`
+                );
+
+              }
+
+
+              // ===========================================
+              // Sprint transition reconstruction
+              // ===========================================
+
+              function transitions(issue) {
+
+                return (
+                  issue.sprintTransitions
                   ||
                   []
                 )
-                .filter(
-                  transition =>
-                    transition.to
-                    ===
-                    sprint.name
-                )
+                .slice()
                 .sort(
                   (a,b) =>
-                    a.date
-                    .localeCompare(
+                    a.date.localeCompare(
                       b.date
                     )
                 );
@@ -2904,26 +3312,185 @@ jobs:
               }
 
 
-              function latestEntry(
+              function isBacklog(value) {
+
+                return (
+                  String(
+                    value
+                    ||
+                    ""
+                  )
+                  .trim()
+                  .toLowerCase()
+                  ===
+                  "backlog"
+                );
+
+              }
+
+
+              function isSprintName(value) {
+
+                const normalized =
+                  String(
+                    value
+                    ||
+                    ""
+                  )
+                  .trim();
+
+
+                if (!normalized) {
+
+                  return false;
+
+                }
+
+
+                if (
+                  projectData
+                  .sprints
+                  .some(
+                    sprint =>
+                      sprint.name
+                      ===
+                      normalized
+                  )
+                ) {
+
+                  return true;
+
+                }
+
+
+                // Allows older sprint names which may no
+                // longer appear in iteration configuration.
+
+                return /^sprint\b/i
+                  .test(
+                    normalized
+                  );
+
+              }
+
+
+              function entriesIntoSprint(
                 issue,
                 sprint
               ) {
 
-                const entries =
-                  sprintEntries(
-                    issue,
-                    sprint
+                return transitions(
+                  issue
+                )
+                .filter(
+                  event =>
+                    event.to
+                    ===
+                    sprint.name
+                );
+
+              }
+
+
+              function departuresFromSprint(
+                issue,
+                sprint
+              ) {
+
+                return transitions(
+                  issue
+                )
+                .filter(
+                  event =>
+                    event.from
+                    ===
+                    sprint.name
+                    &&
+                    event.to
+                    !==
+                    sprint.name
+                );
+
+              }
+
+
+              /*
+               * Find the transition that establishes
+               * membership in the selected sprint as of
+               * the end of the sprint's first calendar day.
+               *
+               * Entry on the first day counts as committed.
+               */
+
+              function committedEntry(
+                issue,
+                sprint
+              ) {
+
+                const events =
+                  transitions(
+                    issue
+                  )
+                  .filter(
+                    event =>
+                      event.date
+                      <=
+                      sprint.start
                   );
 
 
+                let location =
+                  null;
+
+
+                let entry =
+                  null;
+
+
+                events.forEach(
+                  event => {
+
+                    if (
+                      event.to
+                      ===
+                      sprint.name
+                    ) {
+
+                      location =
+                        sprint.name;
+
+                      entry =
+                        event;
+
+                      return;
+
+                    }
+
+
+                    if (
+                      event.from
+                      ===
+                      sprint.name
+                    ) {
+
+                      location =
+                        event.to;
+
+                      entry =
+                        null;
+
+                    }
+
+                  }
+                );
+
+
                 return (
-                  entries.length
+                  location
+                  ===
+                  sprint.name
                   ?
-                  entries[
-                    entries.length
-                    -
-                    1
-                  ]
+                  entry
                   :
                   null
                 );
@@ -2938,25 +3505,82 @@ jobs:
                 return projectData
                   .issues
                   .filter(
-                    issue => {
-
-                      const entry =
-                        latestEntry(
+                    issue =>
+                      Boolean(
+                        committedEntry(
                           issue,
                           sprint
-                        );
-
-
-                      return (
-                        entry
-                        &&
-                        entry.date
-                        <=
-                        sprint.start
-                      );
-
-                    }
+                        )
+                      )
                   );
+
+              }
+
+
+              /*
+               * Carryover is a separate attribute of the
+               * sprint entry.
+               *
+               * Any Sprint -> selected Sprint transition
+               * counts, including an older sprint.
+               *
+               * Backlog -> selected Sprint does not.
+               */
+
+              function carryoverEntry(
+                issue,
+                sprint
+              ) {
+
+                const entries =
+                  entriesIntoSprint(
+                    issue,
+                    sprint
+                  );
+
+
+                for (
+                  let index =
+                    entries.length - 1;
+
+                  index >= 0;
+
+                  index--
+                ) {
+
+                  const entry =
+                    entries[index];
+
+
+                  if (
+                    isSprintName(
+                      entry.from
+                    )
+                    &&
+                    entry.from
+                    !==
+                    sprint.name
+                  ) {
+
+                    return entry;
+
+                  }
+
+
+                  if (
+                    isBacklog(
+                      entry.from
+                    )
+                  ) {
+
+                    return null;
+
+                  }
+
+                }
+
+
+                return null;
 
               }
 
@@ -2968,66 +3592,51 @@ jobs:
                 return projectData
                   .issues
                   .filter(
-                    issue => {
-
-                      const entry =
-                        latestEntry(
+                    issue =>
+                      Boolean(
+                        carryoverEntry(
                           issue,
                           sprint
-                        );
-
-
-                      return (
-                        entry
-                        &&
-                        entry.from
-                        !==
-                        "Backlog"
-                        &&
-                        entry.from
-                        !==
-                        sprint.name
-                      );
-
-                    }
+                        )
+                      )
                   );
 
               }
 
 
-              function addedIssues(
+              /*
+               * Added Late:
+               *
+               * Any transition INTO the selected sprint
+               * after the first calendar day of the sprint.
+               *
+               * This can overlap with Carryover if someone
+               * moves an old-sprint issue into the current
+               * sprint after day one.
+               */
+
+              function addedLateIssues(
                 sprint
               ) {
 
                 return projectData
                   .issues
                   .filter(
-                    issue => {
-
-                      const entry =
-                        latestEntry(
-                          issue,
-                          sprint
-                        );
-
-
-                      return (
-                        entry
-                        &&
-                        entry.from
-                        ===
-                        "Backlog"
-                        &&
-                        entry.date
-                        >
-                        sprint.start
-                        &&
-                        entry.date
-                        <=
-                        sprint.end
-                      );
-
-                    }
+                    issue =>
+                      entriesIntoSprint(
+                        issue,
+                        sprint
+                      )
+                      .some(
+                        entry =>
+                          entry.date
+                          >
+                          sprint.start
+                          &&
+                          entry.date
+                          <=
+                          sprint.end
+                      )
                   );
 
               }
@@ -3041,26 +3650,145 @@ jobs:
                   .issues
                   .filter(
                     issue =>
-                      (
-                        issue
-                        .sprintTransitions
-                        ||
-                        []
+                      departuresFromSprint(
+                        issue,
+                        sprint
                       )
                       .some(
-                        transition =>
-                          transition.from
-                          ===
-                          sprint.name
-                          &&
-                          transition.to
-                          !==
-                          sprint.name
-                          &&
+                        event =>
                           within(
-                            transition.date,
+                            event.date,
                             sprint
                           )
+                      )
+                  );
+
+              }
+
+
+              function entryDescription(
+                issue,
+                sprint
+              ) {
+
+                const committed =
+                  committedEntry(
+                    issue,
+                    sprint
+                  );
+
+
+                if (committed) {
+
+                  if (
+                    isSprintName(
+                      committed.from
+                    )
+                    &&
+                    committed.from
+                    !==
+                    sprint.name
+                  ) {
+
+                    return "Carryover";
+
+                  }
+
+
+                  return "Committed";
+
+                }
+
+
+                const late =
+                  entriesIntoSprint(
+                    issue,
+                    sprint
+                  )
+                  .find(
+                    entry =>
+                      entry.date
+                      >
+                      sprint.start
+                      &&
+                      entry.date
+                      <=
+                      sprint.end
+                  );
+
+
+                if (late) {
+
+                  if (
+                    isSprintName(
+                      late.from
+                    )
+                  ) {
+
+                    return "Late Carryover";
+
+                  }
+
+
+                  return "Added Late";
+
+                }
+
+
+                return "";
+
+              }
+
+
+              function carriedFrom(
+                issue,
+                sprint
+              ) {
+
+                const entry =
+                  carryoverEntry(
+                    issue,
+                    sprint
+                  );
+
+
+                return (
+                  entry
+                  ?
+                  entry.from
+                  :
+                  ""
+                );
+
+              }
+
+
+              // ===========================================
+              // Core issue metrics
+              // ===========================================
+
+              function openedIssues(
+                sprint,
+                priority = null
+              ) {
+
+                return projectData
+                  .issues
+                  .filter(
+                    issue =>
+                      (
+                        priority
+                        ===
+                        null
+                        ||
+                        issue.priority
+                        ===
+                        priority
+                      )
+                      &&
+                      within(
+                        issue.opened,
+                        sprint
                       )
                   );
 
@@ -3077,7 +3805,9 @@ jobs:
                   .filter(
                     issue =>
                       (
-                        !priority
+                        priority
+                        ===
+                        null
                         ||
                         issue.priority
                         ===
@@ -3093,28 +3823,70 @@ jobs:
               }
 
 
-              function openedIssues(
-                sprint,
-                priority = null
+              function plannedScopeIssues(
+                sprint
               ) {
+
+                const ids =
+                  new Set();
+
+
+                committedIssues(
+                  sprint
+                )
+                .forEach(
+                  issue =>
+                    ids.add(
+                      issueId(issue)
+                    )
+                );
+
+
+                addedLateIssues(
+                  sprint
+                )
+                .forEach(
+                  issue =>
+                    ids.add(
+                      issueId(issue)
+                    )
+                );
+
 
                 return projectData
                   .issues
                   .filter(
                     issue =>
-                      (
-                        !priority
-                        ||
-                        issue.priority
-                        ===
-                        priority
-                      )
-                      &&
-                      within(
-                        issue.opened,
-                        sprint
+                      ids.has(
+                        issueId(issue)
                       )
                   );
+
+              }
+
+
+              function completionIssues(
+                sprint
+              ) {
+
+                const scopeIds =
+                  new Set(
+                    plannedScopeIssues(
+                      sprint
+                    )
+                    .map(issueId)
+                  );
+
+
+                return closedIssues(
+                  sprint
+                )
+                .filter(
+                  issue =>
+                    scopeIds.has(
+                      issueId(issue)
+                    )
+                );
 
               }
 
@@ -3124,42 +3896,24 @@ jobs:
               ) {
 
                 const scope =
-                  new Set(
-                    [
-                      ...committedIssues(
-                        sprint
-                      ),
-                      ...addedIssues(
-                        sprint
-                      )
-                    ]
-                    .map(issueId)
+                  plannedScopeIssues(
+                    sprint
                   );
 
 
-                if (!scope.size) {
+                if (!scope.length) {
 
                   return 0;
 
                 }
 
 
-                const closed =
-                  closedIssues(
-                    sprint
-                  )
-                  .filter(
-                    issue =>
-                      scope.has(
-                        issueId(issue)
-                      )
-                  );
-
-
                 return (
-                  closed.length
+                  completionIssues(
+                    sprint
+                  ).length
                   /
-                  scope.size
+                  scope.length
                   *
                   100
                 );
@@ -3167,9 +3921,9 @@ jobs:
               }
 
 
-              // --------------------------------------------
-              // Status analytics
-              // --------------------------------------------
+              // ===========================================
+              // Status
+              // ===========================================
 
               function statusIssues(
                 sprint,
@@ -3182,14 +3936,20 @@ jobs:
                   .filter(
                     issue =>
                       (
-                        !priority
+                        priority
+                        ===
+                        null
                         ||
                         issue.priority
                         ===
                         priority
                       )
                       &&
-                      issue.events
+                      (
+                        issue.statusEvents
+                        ||
+                        []
+                      )
                       .some(
                         event =>
                           event.status
@@ -3211,25 +3971,25 @@ jobs:
                 status
               ) {
 
-                return issue.events
-                  .filter(
-                    event =>
-                      event.status
-                      ===
-                      status
-                  )
-                  .map(
-                    event =>
-                      event.date
-                  )
-                  .sort();
+                return (
+                  issue.statusEvents
+                  ||
+                  []
+                )
+                .filter(
+                  event =>
+                    event.status
+                    ===
+                    status
+                )
+                .map(
+                  event =>
+                    event.date
+                )
+                .sort();
 
               }
 
-
-              // --------------------------------------------
-              // "Worked" definition
-              // --------------------------------------------
 
               function workedIssues(
                 sprint
@@ -3258,25 +4018,29 @@ jobs:
                       }
 
 
-                      issue.events
-                        .forEach(
-                          event => {
+                      (
+                        issue.statusEvents
+                        ||
+                        []
+                      )
+                      .forEach(
+                        event => {
 
-                            if (
-                              within(
-                                event.date,
-                                sprint
-                              )
-                            ) {
+                          if (
+                            within(
+                              event.date,
+                              sprint
+                            )
+                          ) {
 
-                              ids.add(
-                                issueId(issue)
-                              );
-
-                            }
+                            ids.add(
+                              issueId(issue)
+                            );
 
                           }
-                        );
+
+                        }
+                      );
 
                     }
                   );
@@ -3294,242 +4058,95 @@ jobs:
               }
 
 
-              // --------------------------------------------
-              // LOE
-              // --------------------------------------------
+              // ===========================================
+              // Bugs
+              // ===========================================
 
-              function sumLoe(issues) {
-
-                return issues
-                  .reduce(
-                    (
-                      total,
-                      issue
-                    ) => {
-
-                      const value =
-                        Number(
-                          issue.loe
-                        );
-
-
-                      return (
-                        total
-                        +
-                        (
-                          Number.isFinite(
-                            value
-                          )
-                          ?
-                          value
-                          :
-                          0
-                        )
-                      );
-
-                    },
-                    0
-                  );
-
-              }
-
-
-              function formatDays(value) {
+              function isBug(issue) {
 
                 return (
-                  Number(value)
-                  .toFixed(1)
-                  .replace(
-                    /\.0$/,
+                  String(
+                    issue.issueType
+                    ||
                     ""
                   )
-                  +
-                  " days"
+                  .toLowerCase()
+                  ===
+                  "bug"
                 );
 
               }
 
 
-              // --------------------------------------------
-              // Headline KPI cards
-              // --------------------------------------------
-
-              function renderHeadlineKpis(
-                sprint
+              function bugsOpened(
+                sprint,
+                priority = null
               ) {
 
-                const container =
-                  document
-                  .getElementById(
-                    "headlineKpis"
-                  );
-
-
-                container.innerHTML =
-                  "";
-
-
-                const metrics = [
-
-                  {
-                    label:
-                      "Committed",
-
-                    issues:
-                      committedIssues(
-                        sprint
-                      )
-                  },
-
-                  {
-                    label:
-                      "Carried Over",
-
-                    issues:
-                      carriedOverIssues(
-                        sprint
-                      )
-                  },
-
-                  {
-                    label:
-                      "Added",
-
-                    issues:
-                      addedIssues(
-                        sprint
-                      )
-                  },
-
-                  {
-                    label:
-                      "Removed",
-
-                    issues:
-                      removedIssues(
-                        sprint
-                      )
-                  },
-
-                  {
-                    label:
-                      "Closed",
-
-                    issues:
-                      closedIssues(
-                        sprint
-                      )
-                  }
-
-                ];
-
-
-                metrics.forEach(
-                  metric => {
-
-                    const card =
-                      document
-                      .createElement(
-                        "div"
-                      );
-
-
-                    card.className =
-                      "card clickable";
-
-
-                    const loe =
-                      cap("loe")
-                      ?
-                      sumLoe(
-                        metric.issues
-                      )
-                      :
-                      null;
-
-
-                    card.innerHTML = `
-
-                      <div
-                        class="label">
-
-                        ${
-                          escapeHtml(
-                            metric.label
-                          )
-                        }
-
-                      </div>
-
-                      <div
-                        class="number">
-
-                        ${
-                          metric
-                          .issues
-                          .length
-                        }
-
-                      </div>
-
-                      ${
-                        cap("loe")
-                        ?
-                        `
-                        <div
-                          class="subnumber">
-
-                          ${
-                            formatDays(
-                              loe
-                            )
-                          }
-                          LOE
-
-                        </div>
-                        `
-                        :
-                        ""
-                      }
-
-                    `;
-
-
-                    card.onclick =
-                      () =>
-                        openDrilldown(
-                          metric.label,
-                          sprint,
-                          metric.issues
-                        );
-
-
-                    container
-                      .appendChild(
-                        card
-                      );
-
-                  }
+                return openedIssues(
+                  sprint,
+                  priority
+                )
+                .filter(
+                  isBug
                 );
 
+              }
 
-                const completion =
+
+              function bugsClosed(
+                sprint,
+                priority = null
+              ) {
+
+                return closedIssues(
+                  sprint,
+                  priority
+                )
+                .filter(
+                  isBug
+                );
+
+              }
+
+
+              // ===========================================
+              // Cards
+              // ===========================================
+
+              function addKpi(
+                container,
+                label,
+                value,
+                issues = null,
+                subtext = ""
+              ) {
+
+                const card =
                   document
                   .createElement(
                     "div"
                   );
 
 
-                completion.className =
+                card.className =
+                  issues
+                  ?
+                  "card clickable"
+                  :
                   "card";
 
 
-                completion.innerHTML = `
+                card.innerHTML = `
 
                   <div
                     class="label">
 
-                    Completion
+                    ${
+                      escapeHtml(
+                        label
+                      )
+                    }
 
                   </div>
 
@@ -3537,47 +4154,518 @@ jobs:
                     class="number">
 
                     ${
-                      completionRate(
-                        sprint
+                      escapeHtml(
+                        value
                       )
-                      .toFixed(0)
-                    }%
+                    }
 
                   </div>
+
+                  ${
+                    subtext
+                    ?
+                    `
+                    <div
+                      class="subnumber">
+
+                      ${
+                        escapeHtml(
+                          subtext
+                        )
+                      }
+
+                    </div>
+                    `
+                    :
+                    ""
+                  }
 
                 `;
 
 
-                container
-                  .appendChild(
-                    completion
-                  );
+                if (issues) {
+
+                  card.onclick =
+                    () =>
+                      openDrilldown(
+                        label,
+                        selectedSprint(),
+                        issues
+                      );
+
+                }
+
+
+                container.appendChild(
+                  card
+                );
 
               }
 
 
-              // --------------------------------------------
-              // Status chips
-              // --------------------------------------------
+              // ===========================================
+              // Overview
+              // ===========================================
 
-              function renderStatuses(
+              function renderOverview(
                 sprint
               ) {
 
-                const row =
+                const container =
                   document
                   .getElementById(
-                    "statusRow"
+                    "overviewKpis"
                   );
 
 
-                row.innerHTML =
+                container.innerHTML =
                   "";
 
 
-                if (!cap("status")) {
+                const committed =
+                  committedIssues(
+                    sprint
+                  );
 
-                  row.classList.add(
+
+                const carryover =
+                  carriedOverIssues(
+                    sprint
+                  );
+
+
+                const added =
+                  addedLateIssues(
+                    sprint
+                  );
+
+
+                const removed =
+                  removedIssues(
+                    sprint
+                  );
+
+
+                const closed =
+                  closedIssues(
+                    sprint
+                  );
+
+
+                addKpi(
+                  container,
+                  "Committed",
+                  committed.length,
+                  committed,
+                  cap("loe")
+                  ?
+                  `${formatDays(
+                    sumLoe(
+                      committed
+                    )
+                  )} LOE`
+                  :
+                  ""
+                );
+
+
+                addKpi(
+                  container,
+                  "Carried Over",
+                  carryover.length,
+                  carryover,
+                  cap("loe")
+                  ?
+                  `${formatDays(
+                    sumLoe(
+                      carryover
+                    )
+                  )} LOE`
+                  :
+                  ""
+                );
+
+
+                addKpi(
+                  container,
+                  "Added Late",
+                  added.length,
+                  added,
+                  cap("loe")
+                  ?
+                  `${formatDays(
+                    sumLoe(
+                      added
+                    )
+                  )} LOE`
+                  :
+                  ""
+                );
+
+
+                addKpi(
+                  container,
+                  "Removed",
+                  removed.length,
+                  removed
+                );
+
+
+                addKpi(
+                  container,
+                  "Closed",
+                  closed.length,
+                  closed
+                );
+
+
+                addKpi(
+                  container,
+                  "Completion",
+                  (
+                    completionRate(
+                      sprint
+                    )
+                    .toFixed(0)
+                    +
+                    "%"
+                  )
+                );
+
+
+                renderTypeChart(
+                  sprint
+                );
+
+
+                renderSizeChart(
+                  sprint
+                );
+
+
+                renderOverviewLoe(
+                  sprint
+                );
+
+              }
+
+
+              // ===========================================
+              // Type chart
+              // ===========================================
+
+              const typeChart =
+                new Chart(
+                  document.getElementById(
+                    "typeChart"
+                  ),
+                  {
+
+                    type:
+                      "doughnut",
+
+                    data: {
+
+                      labels:
+                        [],
+
+                      datasets: [{
+
+                        data:
+                          [],
+
+                        backgroundColor:
+                          [],
+
+                        borderColor:
+                          "#ffffff",
+
+                        borderWidth:
+                          2,
+
+                        hoverOffset:
+                          8
+
+                      }]
+
+                    },
+
+                    options: {
+
+                      responsive:
+                        true,
+
+                      maintainAspectRatio:
+                        false,
+
+                      resizeDelay:
+                        100,
+
+                      cutout:
+                        "58%",
+
+                      plugins: {
+
+                        legend: {
+
+                          position:
+                            "bottom",
+
+                          labels: {
+
+                            usePointStyle:
+                              true,
+
+                            pointStyle:
+                              "circle",
+
+                            padding:
+                              14
+
+                          }
+
+                        }
+
+                      },
+
+                      onClick(
+                        event,
+                        elements
+                      ) {
+
+                        if (
+                          !elements.length
+                        ) {
+
+                          return;
+
+                        }
+
+
+                        const sprint =
+                          selectedSprint();
+
+
+                        const type =
+                          typeChart
+                          .data
+                          .labels[
+                            elements[0]
+                            .index
+                          ];
+
+
+                        const issues =
+                          workedIssues(
+                            sprint
+                          )
+                          .filter(
+                            issue =>
+                              (
+                                issue.issueType
+                                ||
+                                "Unspecified"
+                              )
+                              ===
+                              type
+                          );
+
+
+                        openDrilldown(
+                          type,
+                          sprint,
+                          issues
+                        );
+
+                      }
+
+                    }
+
+                  }
+                );
+
+
+              function renderTypeChart(
+                sprint
+              ) {
+
+                const counts =
+                  {};
+
+
+                workedIssues(
+                  sprint
+                )
+                .forEach(
+                  issue => {
+
+                    const type =
+                      (
+                        issue.issueType
+                        ||
+                        "Unspecified"
+                      );
+
+
+                    counts[type] =
+                      (
+                        counts[type]
+                        ||
+                        0
+                      )
+                      +
+                      1;
+
+                  }
+                );
+
+
+                const rows =
+                  Object
+                  .entries(
+                    counts
+                  )
+                  .sort(
+                    (a,b) =>
+                      b[1]
+                      -
+                      a[1]
+                  );
+
+
+                typeChart
+                  .data
+                  .labels =
+                    rows.map(
+                      row =>
+                        row[0]
+                    );
+
+
+                typeChart
+                  .data
+                  .datasets[0]
+                  .data =
+                    rows.map(
+                      row =>
+                        row[1]
+                    );
+
+
+                typeChart
+                  .data
+                  .datasets[0]
+                  .backgroundColor =
+                    rows.map(
+                      (
+                        row,
+                        index
+                      ) =>
+                        TYPE_COLORS[
+                          index
+                          %
+                          TYPE_COLORS.length
+                        ]
+                    );
+
+
+                typeChart.update();
+
+              }
+
+
+              // ===========================================
+              // Size chart
+              // ===========================================
+
+              const sizeChart =
+                new Chart(
+                  document.getElementById(
+                    "sizeChart"
+                  ),
+                  {
+
+                    type:
+                      "bar",
+
+                    data: {
+
+                      labels:
+                        [],
+
+                      datasets: [{
+
+                        label:
+                          "Issues",
+
+                        data:
+                          [],
+
+                        backgroundColor:
+                          "#2499e8",
+
+                        borderWidth:
+                          0
+
+                      }]
+
+                    },
+
+                    options: {
+
+                      responsive:
+                        true,
+
+                      maintainAspectRatio:
+                        false,
+
+                      resizeDelay:
+                        100,
+
+                      plugins: {
+
+                        legend: {
+                          display:
+                            false
+                        }
+
+                      },
+
+                      scales: {
+
+                        y: {
+
+                          beginAtZero:
+                            true,
+
+                          ticks: {
+                            precision:
+                              0
+                          }
+
+                        }
+
+                      }
+
+                    }
+
+                  }
+                );
+
+
+              function renderSizeChart(
+                sprint
+              ) {
+
+                const card =
+                  document.getElementById(
+                    "sizeCard"
+                  );
+
+
+                if (!cap("size")) {
+
+                  card.classList.add(
                     "hidden"
                   );
 
@@ -3586,74 +4674,185 @@ jobs:
                 }
 
 
-                row.classList.remove(
+                card.classList.remove(
                   "hidden"
                 );
 
 
+                const counts =
+                  {};
+
+
                 projectData
-                  .statuses
+                  .sizes
                   .forEach(
-                    status => {
-
-                      const issues =
-                        statusIssues(
-                          sprint,
-                          status
-                        );
-
-
-                      const button =
-                        document
-                        .createElement(
-                          "button"
-                        );
-
-
-                      button.className =
-                        "status-chip";
-
-
-                      button.innerHTML =
-                        `${
-                          escapeHtml(
-                            status
-                          )
-                        }
-                        <strong>
-                          ${
-                            issues.length
-                          }
-                        </strong>`;
-
-
-                      button.onclick =
-                        () =>
-                          openDrilldown(
-                            status,
-                            sprint,
-                            issues
-                          );
-
-
-                      row.appendChild(
-                        button
-                      );
-
-                    }
+                    size =>
+                      counts[size] = 0
                   );
+
+
+                workedIssues(
+                  sprint
+                )
+                .forEach(
+                  issue => {
+
+                    const size =
+                      issue.size
+                      ||
+                      "Unspecified";
+
+
+                    counts[size] =
+                      (
+                        counts[size]
+                        ||
+                        0
+                      )
+                      +
+                      1;
+
+                  }
+                );
+
+
+                sizeChart.data.labels =
+                  Object.keys(
+                    counts
+                  );
+
+
+                sizeChart
+                  .data
+                  .datasets[0]
+                  .data =
+                    Object.values(
+                      counts
+                    );
+
+
+                sizeChart.update();
 
               }
 
 
-              // --------------------------------------------
-              // Sprint Flow chart
-              // --------------------------------------------
+              function renderOverviewLoe(
+                sprint
+              ) {
+
+                const card =
+                  document.getElementById(
+                    "overviewLoeCard"
+                  );
+
+
+                if (!cap("loe")) {
+
+                  card.classList.add(
+                    "hidden"
+                  );
+
+                  return;
+
+                }
+
+
+                card.classList.remove(
+                  "hidden"
+                );
+
+
+                const container =
+                  document.getElementById(
+                    "overviewLoeKpis"
+                  );
+
+
+                container.innerHTML =
+                  "";
+
+
+                const scope =
+                  plannedScopeIssues(
+                    sprint
+                  );
+
+
+                const completed =
+                  completionIssues(
+                    sprint
+                  );
+
+
+                addKpi(
+                  container,
+                  "Sprint LOE",
+                  formatDays(
+                    sumLoe(
+                      scope
+                    )
+                  )
+                );
+
+
+                addKpi(
+                  container,
+                  "Completed LOE",
+                  formatDays(
+                    sumLoe(
+                      completed
+                    )
+                  )
+                );
+
+
+                const total =
+                  sumLoe(
+                    scope
+                  );
+
+
+                const done =
+                  sumLoe(
+                    completed
+                  );
+
+
+                const percent =
+                  total
+                  ?
+                  (
+                    done
+                    /
+                    total
+                    *
+                    100
+                  )
+                  :
+                  0;
+
+
+                addKpi(
+                  container,
+                  "LOE Completion",
+                  (
+                    percent
+                    .toFixed(0)
+                    +
+                    "%"
+                  )
+                );
+
+              }
+
+
+              // ===========================================
+              // Flow
+              // ===========================================
 
               const flowChart =
                 new Chart(
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "flowChart"
                   ),
                   {
@@ -3694,6 +4893,15 @@ jobs:
 
                       resizeDelay:
                         100,
+
+                      plugins: {
+
+                        legend: {
+                          display:
+                            false
+                        }
+
+                      },
 
                       onClick(
                         event,
@@ -3742,660 +4950,221 @@ jobs:
                 sprint
               ) {
 
-                const card =
-                  document
-                  .getElementById(
-                    "flowCard"
+                const statusRow =
+                  document.getElementById(
+                    "statusRow"
                   );
+
+
+                const chartCard =
+                  document.getElementById(
+                    "flowChartCard"
+                  );
+
+
+                statusRow.innerHTML =
+                  "";
 
 
                 if (!cap("status")) {
 
-                  card.classList.add(
+                  statusRow.classList.add(
                     "hidden"
                   );
 
-                  return;
+                  chartCard.classList.add(
+                    "hidden"
+                  );
 
-                }
+                } else {
 
+                  statusRow.classList.remove(
+                    "hidden"
+                  );
 
-                card.classList.remove(
-                  "hidden"
-                );
-
-
-                const descriptors = [
-
-                  {
-                    label:
-                      "Opened",
-
-                    issues:
-                      openedIssues(
-                        sprint
-                      )
-                  },
-
-                  ...projectData
-                  .statuses
-                  .map(
-                    status => ({
-
-                      label:
-                        status,
-
-                      issues:
-                        statusIssues(
-                          sprint,
-                          status
-                        )
-
-                    })
-                  ),
-
-                  {
-                    label:
-                      "Closed",
-
-                    issues:
-                      closedIssues(
-                        sprint
-                      )
-                  }
-
-                ];
+                  chartCard.classList.remove(
+                    "hidden"
+                  );
 
 
-                flowChart
-                  ._descriptors =
-                    descriptors;
-
-
-                flowChart
-                  .data
-                  .labels =
-                    descriptors
-                    .map(
-                      item =>
-                        item.label
-                    );
-
-
-                flowChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    descriptors
-                    .map(
-                      item =>
-                        item.issues.length
-                    );
-
-
-                flowChart.update();
-
-              }
-
-
-              // --------------------------------------------
-              // Type doughnut
-              // --------------------------------------------
-
-              const TYPE_COLORS = [
-
-                "#2499e8",
-                "#49b94f",
-                "#0f5f98",
-                "#7bc8f6",
-                "#8fd694",
-                "#506784",
-                "#b8dff7",
-                "#86a9c4",
-                "#a7d9aa",
-                "#36566f",
-                "#5ab5ef",
-                "#72c879"
-
-              ];
-
-
-              const typeChart =
-                new Chart(
-                  document
-                  .getElementById(
-                    "typeChart"
-                  ),
-                  {
-
-                    type:
-                      "doughnut",
-
-                    data: {
-
-                      labels:
-                        [],
-
-                      datasets: [{
-
-                        data:
-                          [],
-
-                        backgroundColor:
-                          [],
-
-                        borderColor:
-                          "#ffffff",
-
-                        borderWidth:
-                          2
-
-                      }]
-
-                    },
-
-                    options: {
-
-                      responsive:
-                        true,
-
-                      maintainAspectRatio:
-                        false,
-
-                      resizeDelay:
-                        100,
-
-                      cutout:
-                        "58%",
-
-                      plugins: {
-
-                        legend: {
-
-                          position:
-                            "bottom"
-
-                        }
-
-                      },
-
-                      onClick(
-                        event,
-                        elements
-                      ) {
-
-                        if (
-                          !elements.length
-                        ) {
-
-                          return;
-
-                        }
-
-
-                        const type =
-                          typeChart
-                          .data
-                          .labels[
-                            elements[0]
-                            .index
-                          ];
-
-
-                        const sprint =
-                          selectedSprint();
-
+                  projectData
+                    .statuses
+                    .forEach(
+                      status => {
 
                         const issues =
-                          workedIssues(
-                            sprint
-                          )
-                          .filter(
-                            issue =>
-                              issue.issueType
-                              ===
-                              type
+                          statusIssues(
+                            sprint,
+                            status
                           );
 
 
-                        openDrilldown(
-                          type,
-                          sprint,
-                          issues
-                        );
+                        const chip =
+                          document
+                          .createElement(
+                            "button"
+                          );
+
+
+                        chip.className =
+                          "status-chip";
+
+
+                        chip.innerHTML = `
+
+                          ${
+                            escapeHtml(
+                              status
+                            )
+                          }
+
+                          <strong>
+                            ${
+                              issues.length
+                            }
+                          </strong>
+
+                        `;
+
+
+                        chip.onclick =
+                          () =>
+                            openDrilldown(
+                              status,
+                              sprint,
+                              issues
+                            );
+
+
+                        statusRow
+                          .appendChild(
+                            chip
+                          );
 
                       }
-
-                    }
-
-                  }
-                );
-
-
-              function renderType(
-                sprint
-              ) {
-
-                const counts =
-                  {};
-
-
-                workedIssues(
-                  sprint
-                )
-                .forEach(
-                  issue => {
-
-                    const type =
-                      issue.issueType
-                      ||
-                      "Unspecified";
-
-
-                    counts[type] =
-                      (
-                        counts[type]
-                        ||
-                        0
-                      )
-                      +
-                      1;
-
-                  }
-                );
-
-
-                const breakdown =
-                  Object
-                  .entries(
-                    counts
-                  )
-                  .sort(
-                    (
-                      a,
-                      b
-                    ) =>
-                      b[1]
-                      -
-                      a[1]
-                  );
-
-
-                typeChart
-                  .data
-                  .labels =
-                    breakdown
-                    .map(
-                      item =>
-                        item[0]
                     );
 
 
-                typeChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    breakdown
-                    .map(
-                      item =>
-                        item[1]
-                    );
+                  const descriptors = [
 
+                    {
+                      label:
+                        "Opened",
 
-                typeChart
-                  .data
-                  .datasets[0]
-                  .backgroundColor =
-                    breakdown
-                    .map(
-                      (
-                        item,
-                        index
-                      ) =>
-                        TYPE_COLORS[
-                          index
-                          %
-                          TYPE_COLORS.length
-                        ]
-                    );
-
-
-                typeChart.update();
-
-              }
-
-
-              // --------------------------------------------
-              // Size chart — only if project has Size
-              // --------------------------------------------
-
-              const sizeChart =
-                new Chart(
-                  document
-                  .getElementById(
-                    "sizeChart"
-                  ),
-                  {
-
-                    type:
-                      "bar",
-
-                    data: {
-
-                      labels:
-                        [],
-
-                      datasets: [{
-
-                        label:
-                          "Issues",
-
-                        data:
-                          [],
-
-                        backgroundColor:
-                          "#2499e8",
-
-                        borderWidth:
-                          0
-
-                      }]
-
+                      issues:
+                        openedIssues(
+                          sprint
+                        )
                     },
 
-                    options: {
+                    ...projectData
+                    .statuses
+                    .map(
+                      status => ({
 
-                      responsive:
-                        true,
+                        label:
+                          status,
 
-                      maintainAspectRatio:
-                        false,
+                        issues:
+                          statusIssues(
+                            sprint,
+                            status
+                          )
 
-                      resizeDelay:
-                        100
+                      })
+                    ),
 
+                    {
+                      label:
+                        "Closed",
+
+                      issues:
+                        closedIssues(
+                          sprint
+                        )
                     }
 
-                  }
-                );
+                  ];
 
 
-              function renderSize(
-                sprint
-              ) {
-
-                const card =
-                  document
-                  .getElementById(
-                    "sizeCard"
-                  );
+                  flowChart
+                    ._descriptors =
+                      descriptors;
 
 
-                if (!cap("size")) {
+                  flowChart
+                    .data
+                    .labels =
+                      descriptors
+                      .map(
+                        item =>
+                          item.label
+                      );
 
-                  card.classList.add(
-                    "hidden"
-                  );
 
-                  return;
+                  flowChart
+                    .data
+                    .datasets[0]
+                    .data =
+                      descriptors
+                      .map(
+                        item =>
+                          item.issues.length
+                      );
+
+
+                  flowChart.update();
 
                 }
 
 
-                card.classList.remove(
-                  "hidden"
-                );
-
-
-                const counts =
-                  {};
-
-
-                projectData
-                  .sizes
-                  .forEach(
-                    size => {
-
-                      counts[size] =
-                        0;
-
-                    }
-                  );
-
-
-                workedIssues(
+                renderPriorityTable(
                   sprint
-                )
-                .forEach(
-                  issue => {
-
-                    const size =
-                      issue.size
-                      ||
-                      "Unspecified";
-
-
-                    counts[size] =
-                      (
-                        counts[size]
-                        ||
-                        0
-                      )
-                      +
-                      1;
-
-                  }
-                );
-
-
-                sizeChart
-                  .data
-                  .labels =
-                    Object.keys(
-                      counts
-                    );
-
-
-                sizeChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    Object.values(
-                      counts
-                    );
-
-
-                sizeChart.update();
-
-              }
-
-
-              // --------------------------------------------
-              // LOE analytics — only if numeric LOE exists
-              // --------------------------------------------
-
-              function renderLoe(
-                sprint
-              ) {
-
-                const card =
-                  document
-                  .getElementById(
-                    "loeCard"
-                  );
-
-
-                if (!cap("loe")) {
-
-                  card.classList.add(
-                    "hidden"
-                  );
-
-                  return;
-
-                }
-
-
-                card.classList.remove(
-                  "hidden"
-                );
-
-
-                const committed =
-                  committedIssues(
-                    sprint
-                  );
-
-
-                const carried =
-                  carriedOverIssues(
-                    sprint
-                  );
-
-
-                const added =
-                  addedIssues(
-                    sprint
-                  );
-
-
-                const removed =
-                  removedIssues(
-                    sprint
-                  );
-
-
-                const closed =
-                  closedIssues(
-                    sprint
-                  );
-
-
-                const metrics = [
-
-                  [
-                    "Committed",
-                    sumLoe(
-                      committed
-                    )
-                  ],
-
-                  [
-                    "Carried Over",
-                    sumLoe(
-                      carried
-                    )
-                  ],
-
-                  [
-                    "Added",
-                    sumLoe(
-                      added
-                    )
-                  ],
-
-                  [
-                    "Removed",
-                    sumLoe(
-                      removed
-                    )
-                  ],
-
-                  [
-                    "Closed",
-                    sumLoe(
-                      closed
-                    )
-                  ]
-
-                ];
-
-
-                const container =
-                  document
-                  .getElementById(
-                    "loeKpis"
-                  );
-
-
-                container.innerHTML =
-                  "";
-
-
-                metrics.forEach(
-                  (
-                    [
-                      label,
-                      value
-                    ]
-                  ) => {
-
-                    const item =
-                      document
-                      .createElement(
-                        "div"
-                      );
-
-
-                    item.className =
-                      "card";
-
-
-                    item.innerHTML = `
-
-                      <div
-                        class="label">
-
-                        ${
-                          escapeHtml(
-                            label
-                          )
-                        }
-
-                      </div>
-
-                      <div
-                        class="number">
-
-                        ${
-                          formatDays(
-                            value
-                          )
-                        }
-
-                      </div>
-
-                    `;
-
-
-                    container
-                      .appendChild(
-                        item
-                      );
-
-                  }
                 );
 
               }
 
 
-              // --------------------------------------------
-              // Priority table — hidden if no Priority
-              // --------------------------------------------
+              // ===========================================
+              // Priority
+              // ===========================================
 
-              function renderPriority(
+              function renderPriorityTable(
                 sprint
               ) {
 
                 const card =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "priorityCard"
                   );
 
 
+                /*
+                 * Do NOT require capability discovery alone.
+                 *
+                 * Actual observed priority values are enough
+                 * to display the table.
+                 */
+
+                const priorityAvailable =
+                  (
+                    cap("priority")
+                    ||
+                    projectData
+                    .issues
+                    .some(
+                      issue =>
+                        issue.priority
+                        &&
+                        issue.priority
+                        !==
+                        "Unspecified"
+                    )
+                  );
+
+
                 if (
-                  !cap("priority")
+                  !priorityAvailable
                   ||
                   !cap("status")
                 ) {
@@ -4414,9 +5183,28 @@ jobs:
                 );
 
 
+                const priorities =
+                  projectData
+                  .priorities
+                  .length
+                  ?
+                  projectData.priorities
+                  :
+                  [
+                    ...new Set(
+                      projectData
+                      .issues
+                      .map(
+                        issue =>
+                          issue.priority
+                      )
+                      .filter(Boolean)
+                    )
+                  ];
+
+
                 const header =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "priorityHeader"
                   );
 
@@ -4425,21 +5213,13 @@ jobs:
                   "";
 
 
-                const headings = [
-
+                [
                   "Priority",
-
                   "Opened",
-
-                  ...projectData
-                  .statuses,
-
+                  ...projectData.statuses,
                   "Closed"
-
-                ];
-
-
-                headings.forEach(
+                ]
+                .forEach(
                   heading => {
 
                     const th =
@@ -4462,8 +5242,7 @@ jobs:
 
 
                 const body =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "priorityRows"
                   );
 
@@ -4472,36 +5251,499 @@ jobs:
                   "";
 
 
-                projectData
-                  .priorities
-                  .forEach(
-                    priority => {
+                priorities.forEach(
+                  priority => {
 
-                      const row =
-                        document
-                        .createElement(
-                          "tr"
-                        );
+                    const row =
+                      document
+                      .createElement(
+                        "tr"
+                      );
 
 
-                      const first =
+                    const first =
+                      document
+                      .createElement(
+                        "td"
+                      );
+
+
+                    first.innerHTML =
+                      `<strong>${
+                        escapeHtml(
+                          priority
+                        )
+                      }</strong>`;
+
+
+                    row.appendChild(
+                      first
+                    );
+
+
+                    function metric(
+                      issues,
+                      label
+                    ) {
+
+                      const td =
                         document
                         .createElement(
                           "td"
                         );
 
 
-                      first.textContent =
-                        priority;
+                      td.className =
+                        "metric-cell";
+
+
+                      td.textContent =
+                        issues.length;
+
+
+                      td.onclick =
+                        () =>
+                          openDrilldown(
+                            `${priority} · ${label}`,
+                            sprint,
+                            issues
+                          );
 
 
                       row.appendChild(
-                        first
+                        td
+                      );
+
+                    }
+
+
+                    metric(
+                      openedIssues(
+                        sprint,
+                        priority
+                      ),
+                      "Opened"
+                    );
+
+
+                    projectData
+                      .statuses
+                      .forEach(
+                        status => {
+
+                          metric(
+                            statusIssues(
+                              sprint,
+                              status,
+                              priority
+                            ),
+                            status
+                          );
+
+                        }
                       );
 
 
-                      function metric(
-                        issues
+                    metric(
+                      closedIssues(
+                        sprint,
+                        priority
+                      ),
+                      "Closed"
+                    );
+
+
+                    body.appendChild(
+                      row
+                    );
+
+                  }
+                );
+
+              }
+
+
+              // ===========================================
+              // Scope & carryover
+              // ===========================================
+
+              function renderScope(
+                sprint
+              ) {
+
+                const container =
+                  document.getElementById(
+                    "scopeKpis"
+                  );
+
+
+                container.innerHTML =
+                  "";
+
+
+                const committed =
+                  committedIssues(
+                    sprint
+                  );
+
+
+                const carryover =
+                  carriedOverIssues(
+                    sprint
+                  );
+
+
+                const added =
+                  addedLateIssues(
+                    sprint
+                  );
+
+
+                const removed =
+                  removedIssues(
+                    sprint
+                  );
+
+
+                addKpi(
+                  container,
+                  "Committed",
+                  committed.length,
+                  committed
+                );
+
+
+                addKpi(
+                  container,
+                  "Carried Over",
+                  carryover.length,
+                  carryover
+                );
+
+
+                addKpi(
+                  container,
+                  "Added Late",
+                  added.length,
+                  added
+                );
+
+
+                addKpi(
+                  container,
+                  "Removed",
+                  removed.length,
+                  removed
+                );
+
+
+                const scope =
+                  plannedScopeIssues(
+                    sprint
+                  );
+
+
+                const latePercent =
+                  scope.length
+                  ?
+                  (
+                    added.length
+                    /
+                    scope.length
+                    *
+                    100
+                  )
+                  :
+                  0;
+
+
+                addKpi(
+                  container,
+                  "Late Scope",
+                  (
+                    latePercent
+                    .toFixed(0)
+                    +
+                    "%"
+                  )
+                );
+
+
+                renderScopeLoe(
+                  sprint
+                );
+
+              }
+
+
+              function renderScopeLoe(
+                sprint
+              ) {
+
+                const card =
+                  document.getElementById(
+                    "scopeLoeCard"
+                  );
+
+
+                if (!cap("loe")) {
+
+                  card.classList.add(
+                    "hidden"
+                  );
+
+                  return;
+
+                }
+
+
+                card.classList.remove(
+                  "hidden"
+                );
+
+
+                const container =
+                  document.getElementById(
+                    "scopeLoeKpis"
+                  );
+
+
+                container.innerHTML =
+                  "";
+
+
+                [
+                  [
+                    "Committed LOE",
+                    committedIssues(
+                      sprint
+                    )
+                  ],
+
+                  [
+                    "Carryover LOE",
+                    carriedOverIssues(
+                      sprint
+                    )
+                  ],
+
+                  [
+                    "Added Late LOE",
+                    addedLateIssues(
+                      sprint
+                    )
+                  ],
+
+                  [
+                    "Removed LOE",
+                    removedIssues(
+                      sprint
+                    )
+                  ]
+
+                ]
+                .forEach(
+                  (
+                    [
+                      label,
+                      issues
+                    ]
+                  ) => {
+
+                    addKpi(
+                      container,
+                      label,
+                      formatDays(
+                        sumLoe(
+                          issues
+                        )
+                      ),
+                      issues
+                    );
+
+                  }
+                );
+
+              }
+
+
+              // ===========================================
+              // Quality
+              // ===========================================
+
+              function renderQuality(
+                sprint
+              ) {
+
+                const container =
+                  document.getElementById(
+                    "qualityKpis"
+                  );
+
+
+                container.innerHTML =
+                  "";
+
+
+                const opened =
+                  bugsOpened(
+                    sprint
+                  );
+
+
+                const closed =
+                  bugsClosed(
+                    sprint
+                  );
+
+
+                addKpi(
+                  container,
+                  "Bugs Opened",
+                  opened.length,
+                  opened
+                );
+
+
+                addKpi(
+                  container,
+                  "Bugs Closed",
+                  closed.length,
+                  closed
+                );
+
+
+                const ratio =
+                  closed.length
+                  ?
+                  (
+                    opened.length
+                    /
+                    closed.length
+                  )
+                  .toFixed(2)
+                  +
+                  "x"
+                  :
+                  "—";
+
+
+                addKpi(
+                  container,
+                  "Bug C/R",
+                  ratio
+                );
+
+
+                if (cap("loe")) {
+
+                  addKpi(
+                    container,
+                    "Bug LOE",
+                    formatDays(
+                      sumLoe(
+                        workedIssues(
+                          sprint
+                        )
+                        .filter(
+                          isBug
+                        )
+                      )
+                    )
+                  );
+
+                }
+
+
+                renderQualityPriority(
+                  sprint
+                );
+
+              }
+
+
+              function renderQualityPriority(
+                sprint
+              ) {
+
+                const card =
+                  document.getElementById(
+                    "qualityPriorityCard"
+                  );
+
+
+                const priorityAvailable =
+                  (
+                    cap("priority")
+                    ||
+                    projectData
+                    .issues
+                    .some(
+                      issue =>
+                        issue.priority
+                        &&
+                        issue.priority
+                        !==
+                        "Unspecified"
+                    )
+                  );
+
+
+                if (!priorityAvailable) {
+
+                  card.classList.add(
+                    "hidden"
+                  );
+
+                  return;
+
+                }
+
+
+                card.classList.remove(
+                  "hidden"
+                );
+
+
+                const rows =
+                  document.getElementById(
+                    "qualityPriorityRows"
+                  );
+
+
+                rows.innerHTML =
+                  "";
+
+
+                projectData
+                  .priorities
+                  .forEach(
+                    priority => {
+
+                      const opened =
+                        bugsOpened(
+                          sprint,
+                          priority
+                        );
+
+
+                      const closed =
+                        bugsClosed(
+                          sprint,
+                          priority
+                        );
+
+
+                      const tr =
+                        document
+                        .createElement(
+                          "tr"
+                        );
+
+
+                      function cell(
+                        content,
+                        issues = null
                       ) {
 
                         const td =
@@ -4511,65 +5753,69 @@ jobs:
                           );
 
 
-                        td.className =
-                          "metric-cell";
-
-
                         td.textContent =
-                          issues.length;
+                          content;
 
 
-                        td.onclick =
-                          () =>
-                            openDrilldown(
-                              priority,
-                              sprint,
-                              issues
-                            );
+                        if (issues) {
+
+                          td.className =
+                            "metric-cell";
 
 
-                        row.appendChild(
+                          td.onclick =
+                            () =>
+                              openDrilldown(
+                                `${priority} Bugs`,
+                                sprint,
+                                issues
+                              );
+
+                        }
+
+
+                        tr.appendChild(
                           td
                         );
 
                       }
 
 
-                      metric(
-                        openedIssues(
-                          sprint,
-                          priority
-                        )
+                      cell(
+                        priority
                       );
 
 
-                      projectData
-                        .statuses
-                        .forEach(
-                          status => {
-
-                            metric(
-                              statusIssues(
-                                sprint,
-                                status,
-                                priority
-                              )
-                            );
-
-                          }
-                        );
-
-
-                      metric(
-                        closedIssues(
-                          sprint,
-                          priority
-                        )
+                      cell(
+                        opened.length,
+                        opened
                       );
 
 
-                      body.appendChild(
-                        row
+                      cell(
+                        closed.length,
+                        closed
+                      );
+
+
+                      cell(
+                        closed.length
+                        ?
+                        (
+                          opened.length
+                          /
+                          closed.length
+                        )
+                        .toFixed(2)
+                        +
+                        "x"
+                        :
+                        "—"
+                      );
+
+
+                      rows.appendChild(
+                        tr
                       );
 
                     }
@@ -4578,11 +5824,9 @@ jobs:
               }
 
 
-              // --------------------------------------------
+              // ===========================================
               // Drilldown
-              //
-              // Optional columns appear based on capability.
-              // --------------------------------------------
+              // ===========================================
 
               function openDrilldown(
                 title,
@@ -4590,21 +5834,30 @@ jobs:
                 issues
               ) {
 
-                document
-                  .getElementById(
-                    "drilldownTitle"
-                  )
-                  .textContent =
-                    title;
+                document.getElementById(
+                  "drilldownTitle"
+                ).textContent =
+                  title;
 
 
-                document
-                  .getElementById(
-                    "drilldownSubtitle"
-                  )
-                  .textContent =
-                    `${sprint.name} · ` +
-                    `${issues.length} issues`;
+                document.getElementById(
+                  "drilldownSubtitle"
+                ).textContent =
+                  (
+                    `${sprint.name} · `
+                    +
+                    `${issues.length} issue`
+                    +
+                    (
+                      issues.length
+                      ===
+                      1
+                      ?
+                      ""
+                      :
+                      "s"
+                    )
+                  );
 
 
                 const columns = [
@@ -4612,6 +5865,9 @@ jobs:
                   {
                     label:
                       "Issue",
+
+                    className:
+                      "",
 
                     render:
                       issue =>
@@ -4623,7 +5879,8 @@ jobs:
                               issue.url
                             )
                           }"
-                          target="_blank">
+                          target="_blank"
+                          rel="noopener noreferrer">
 
                           ${
                             escapeHtml(
@@ -4665,7 +5922,20 @@ jobs:
                 ];
 
 
-                if (cap("priority")) {
+                if (
+                  cap("priority")
+                  ||
+                  projectData
+                  .issues
+                  .some(
+                    issue =>
+                      issue.priority
+                      &&
+                      issue.priority
+                      !==
+                      "Unspecified"
+                  )
+                ) {
 
                   columns.push({
 
@@ -4739,41 +6009,13 @@ jobs:
                     "Sprint Entry",
 
                   render:
-                    issue => {
-
-                      const entry =
-                        latestEntry(
+                    issue =>
+                      escapeHtml(
+                        entryDescription(
                           issue,
                           sprint
-                        );
-
-
-                      if (!entry) {
-
-                        return "";
-
-                      }
-
-
-                      return (
-                        entry.from
-                        ===
-                        "Backlog"
-                        ?
-                        (
-                          entry.date
-                          >
-                          sprint.start
-                          ?
-                          "Added"
-                          :
-                          "Committed"
                         )
-                        :
-                        "Carryover"
-                      );
-
-                    }
+                      )
 
                 });
 
@@ -4784,33 +6026,13 @@ jobs:
                     "Carried From",
 
                   render:
-                    issue => {
-
-                      const entry =
-                        latestEntry(
+                    issue =>
+                      escapeHtml(
+                        carriedFrom(
                           issue,
                           sprint
-                        );
-
-
-                      if (
-                        !entry
-                        ||
-                        entry.from
-                        ===
-                        "Backlog"
-                      ) {
-
-                        return "";
-
-                      }
-
-
-                      return escapeHtml(
-                        entry.from
-                      );
-
-                    }
+                        )
+                      )
 
                 });
 
@@ -4881,8 +6103,7 @@ jobs:
 
 
                 const header =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "drilldownHeader"
                   );
 
@@ -4914,8 +6135,7 @@ jobs:
 
 
                 const body =
-                  document
-                  .getElementById(
+                  document.getElementById(
                     "drilldownRows"
                   );
 
@@ -4976,67 +6196,281 @@ jobs:
                 );
 
 
-                document
-                  .getElementById(
-                    "drilldownBackdrop"
-                  )
-                  .classList
-                  .remove(
-                    "hidden"
-                  );
+                document.getElementById(
+                  "drilldownBackdrop"
+                )
+                .classList
+                .remove(
+                  "hidden"
+                );
 
               }
 
 
               function closeDrilldown() {
 
+                document.getElementById(
+                  "drilldownBackdrop"
+                )
+                .classList
+                .add(
+                  "hidden"
+                );
+
+              }
+
+
+              document.getElementById(
+                "closeDrilldown"
+              )
+              .onclick =
+                closeDrilldown;
+
+
+              document.getElementById(
+                "drilldownBackdrop"
+              )
+              .addEventListener(
+                "click",
+                event => {
+
+                  if (
+                    event.target.id
+                    ===
+                    "drilldownBackdrop"
+                  ) {
+
+                    closeDrilldown();
+
+                  }
+
+                }
+              );
+
+
+              document.addEventListener(
+                "keydown",
+                event => {
+
+                  if (
+                    event.key
+                    ===
+                    "Escape"
+                  ) {
+
+                    closeDrilldown();
+
+                  }
+
+                }
+              );
+
+
+              // ===========================================
+              // Views
+              // ===========================================
+
+              function currentView() {
+
+                const params =
+                  new URLSearchParams(
+                    window.location.search
+                  );
+
+
+                const view =
+                  params.get(
+                    "view"
+                  );
+
+
+                return [
+                  "overview",
+                  "flow",
+                  "scope",
+                  "quality"
+                ]
+                .includes(view)
+                ?
+                view
+                :
+                "overview";
+
+              }
+
+
+              function setView(
+                view,
+                updateUrl = true
+              ) {
+
+                document
+                  .querySelectorAll(
+                    ".view"
+                  )
+                  .forEach(
+                    section =>
+                      section
+                      .classList
+                      .remove(
+                        "active"
+                      )
+                  );
+
+
                 document
                   .getElementById(
-                    "drilldownBackdrop"
+                    `view-${view}`
                   )
                   .classList
                   .add(
-                    "hidden"
+                    "active"
                   );
+
+
+                document
+                  .querySelectorAll(
+                    ".nav-button"
+                  )
+                  .forEach(
+                    button => {
+
+                      button
+                      .classList
+                      .toggle(
+                        "active",
+                        button.dataset.view
+                        ===
+                        view
+                      );
+
+                    }
+                  );
+
+
+                if (updateUrl) {
+
+                  updateUrlState({
+                    view
+                  });
+
+                }
+
+
+                requestAnimationFrame(
+                  () => {
+
+                    flowChart.resize();
+                    typeChart.resize();
+                    sizeChart.resize();
+
+                  }
+                );
 
               }
 
 
               document
-                .getElementById(
-                  "closeDrilldown"
+                .querySelectorAll(
+                  ".nav-button"
                 )
-                .onclick =
-                  closeDrilldown;
+                .forEach(
+                  button => {
 
-
-              document
-                .getElementById(
-                  "drilldownBackdrop"
-                )
-                .addEventListener(
-                  "click",
-                  event => {
-
-                    if (
-                      event.target.id
-                      ===
-                      "drilldownBackdrop"
-                    ) {
-
-                      closeDrilldown();
-
-                    }
+                    button
+                    .addEventListener(
+                      "click",
+                      () =>
+                        setView(
+                          button.dataset.view
+                        )
+                    );
 
                   }
                 );
 
 
-              // --------------------------------------------
-              // Main render
-              // --------------------------------------------
+              function updateUrlState(
+                changes = {}
+              ) {
 
-              function render() {
+                const params =
+                  new URLSearchParams(
+                    window.location.search
+                  );
+
+
+                Object
+                  .entries(
+                    changes
+                  )
+                  .forEach(
+                    (
+                      [
+                        key,
+                        value
+                      ]
+                    ) => {
+
+                      if (
+                        value
+                        ===
+                        null
+                        ||
+                        value
+                        ===
+                        undefined
+                        ||
+                        value
+                        ===
+                        ""
+                      ) {
+
+                        params.delete(
+                          key
+                        );
+
+                      } else {
+
+                        params.set(
+                          key,
+                          value
+                        );
+
+                      }
+
+                    }
+                  );
+
+
+                const query =
+                  params.toString();
+
+
+                history.replaceState(
+                  null,
+                  "",
+                  (
+                    window.location.pathname
+                    +
+                    (
+                      query
+                      ?
+                      `?${query}`
+                      :
+                      ""
+                    )
+                  )
+                );
+
+              }
+
+
+              // ===========================================
+              // Main rendering
+              // ===========================================
+
+              function renderAll() {
 
                 const sprint =
                   selectedSprint();
@@ -5049,12 +6483,7 @@ jobs:
                 }
 
 
-                renderHeadlineKpis(
-                  sprint
-                );
-
-
-                renderStatuses(
+                renderOverview(
                   sprint
                 );
 
@@ -5064,34 +6493,39 @@ jobs:
                 );
 
 
-                renderType(
+                renderScope(
                   sprint
                 );
 
 
-                renderSize(
+                renderQuality(
                   sprint
                 );
 
 
-                renderLoe(
-                  sprint
-                );
+                updateUrlState({
+
+                  sprint:
+                    sprint.name
+
+                });
 
 
-                renderPriority(
-                  sprint
+                setView(
+                  currentView(),
+                  false
                 );
 
               }
 
 
-              // --------------------------------------------
+              // ===========================================
               // Project loading
-              // --------------------------------------------
+              // ===========================================
 
               function loadProject(
-                project
+                project,
+                requestedSprint = null
               ) {
 
                 fetch(
@@ -5103,8 +6537,20 @@ jobs:
                 )
 
                 .then(
-                  response =>
-                    response.json()
+                  response => {
+
+                    if (!response.ok) {
+
+                      throw new Error(
+                        `Unable to load ${project.slug}`
+                      );
+
+                    }
+
+
+                    return response.json();
+
+                  }
                 )
 
                 .then(
@@ -5115,8 +6561,7 @@ jobs:
 
 
                     const sprintSelect =
-                      document
-                      .getElementById(
+                      document.getElementById(
                         "sprintSelect"
                       );
 
@@ -5126,7 +6571,7 @@ jobs:
 
 
                     if (
-                      !cap("sprint")
+                      !data.sprints
                       ||
                       !data.sprints.length
                     ) {
@@ -5139,13 +6584,12 @@ jobs:
 
 
                       option.textContent =
-                        "No Sprint field";
+                        "No sprint data";
 
 
-                      sprintSelect
-                        .appendChild(
-                          option
-                        );
+                      sprintSelect.appendChild(
+                        option
+                      );
 
 
                       return;
@@ -5153,78 +6597,109 @@ jobs:
                     }
 
 
-                    data.sprints
-                      .forEach(
-                        (
-                          sprint,
-                          index
-                        ) => {
+                    data.sprints.forEach(
+                      (
+                        sprint,
+                        index
+                      ) => {
 
-                          const option =
-                            document
-                            .createElement(
-                              "option"
-                            );
-
-
-                          option.value =
-                            index;
+                        const option =
+                          document
+                          .createElement(
+                            "option"
+                          );
 
 
-                          option.textContent =
-                            `${sprint.name} · ` +
-                            `${sprint.start} – ` +
-                            `${sprint.end}`;
+                        option.value =
+                          index;
 
 
-                          sprintSelect
-                            .appendChild(
-                              option
-                            );
-
-                        }
-                      );
-
-
-                    const today =
-                      new Date()
-                      .toISOString()
-                      .slice(
-                        0,
-                        10
-                      );
+                        option.textContent =
+                          (
+                            `${sprint.name} · `
+                            +
+                            `${sprint.start} – `
+                            +
+                            `${sprint.end}`
+                          );
 
 
-                    const current =
-                      data.sprints
-                      .findIndex(
-                        sprint =>
-                          today
-                          >=
-                          sprint.start
-                          &&
-                          today
-                          <=
-                          sprint.end
-                      );
+                        sprintSelect.appendChild(
+                          option
+                        );
+
+                      }
+                    );
+
+
+                    let index =
+                      -1;
+
+
+                    if (requestedSprint) {
+
+                      index =
+                        data.sprints
+                        .findIndex(
+                          sprint =>
+                            sprint.name
+                            ===
+                            requestedSprint
+                        );
+
+                    }
+
+
+                    if (index < 0) {
+
+                      const today =
+                        localToday();
+
+
+                      index =
+                        data.sprints
+                        .findIndex(
+                          sprint =>
+                            today
+                            >=
+                            sprint.start
+                            &&
+                            today
+                            <=
+                            sprint.end
+                        );
+
+                    }
+
+
+                    if (index < 0) {
+
+                      index =
+                        Math.max(
+                          data.sprints.length
+                          -
+                          1,
+                          0
+                        );
+
+                    }
 
 
                     sprintSelect.value =
-                      current
-                      >=
-                      0
-                      ?
-                      current
-                      :
-                      Math.max(
-                        data.sprints.length
-                        -
-                        1,
-                        0
-                      );
+                      index;
 
 
-                    render();
+                    updateUrlState({
+
+                      project:
+                        String(
+                          project.number
+                        )
+
+                    });
+
+
+                    renderAll();
 
                   }
                 );
@@ -5232,9 +6707,9 @@ jobs:
               }
 
 
-              // --------------------------------------------
-              // Project discovery
-              // --------------------------------------------
+              // ===========================================
+              // Bootstrap
+              // ===========================================
 
               fetch(
                 `data/projects.json?v=${cacheVersion}`,
@@ -5245,18 +6720,37 @@ jobs:
               )
 
               .then(
-                response =>
-                  response.json()
+                response => {
+
+                  if (!response.ok) {
+
+                    throw new Error(
+                      "Unable to load projects.json"
+                    );
+
+                  }
+
+
+                  return response.json();
+
+                }
               )
 
               .then(
                 projects => {
 
+                  projectsIndex =
+                    projects;
+
+
                   const select =
-                    document
-                    .getElementById(
+                    document.getElementById(
                       "projectSelect"
                     );
+
+
+                  select.innerHTML =
+                    "";
 
 
                   projects.forEach(
@@ -5277,8 +6771,11 @@ jobs:
 
 
                       option.textContent =
-                        `${project.title} ` +
-                        `(${project.issueCount} issues)`;
+                        (
+                          `${project.title} `
+                          +
+                          `(${project.issueCount} issues)`
+                        );
 
 
                       select.appendChild(
@@ -5289,10 +6786,54 @@ jobs:
                   );
 
 
+                  const params =
+                    new URLSearchParams(
+                      window.location.search
+                    );
+
+
+                  const requestedProject =
+                    Number(
+                      params.get(
+                        "project"
+                      )
+                    );
+
+
+                  const requestedSprint =
+                    params.get(
+                      "sprint"
+                    );
+
+
+                  let projectIndex =
+                    projects.findIndex(
+                      project =>
+                        project.number
+                        ===
+                        requestedProject
+                    );
+
+
+                  if (projectIndex < 0) {
+
+                    projectIndex =
+                      0;
+
+                  }
+
+
                   if (projects.length) {
 
+                    select.value =
+                      projectIndex;
+
+
                     loadProject(
-                      projects[0]
+                      projects[
+                        projectIndex
+                      ],
+                      requestedSprint
                     );
 
                   }
@@ -5302,30 +6843,43 @@ jobs:
                     "change",
                     event => {
 
-                      loadProject(
+                      const project =
                         projects[
                           Number(
                             event.target.value
                           )
-                        ]
+                        ];
+
+
+                      loadProject(
+                        project
                       );
 
                     }
+                  );
+
+
+                  setView(
+                    currentView(),
+                    false
                   );
 
                 }
               );
 
 
-              document
-                .getElementById(
-                  "sprintSelect"
-                )
-                .addEventListener(
-                  "change",
-                  render
-                );
+              document.getElementById(
+                "sprintSelect"
+              )
+              .addEventListener(
+                "change",
+                renderAll
+              );
 
+
+              // ===========================================
+              // Resize behavior
+              // ===========================================
 
               let resizeTimer =
                 null;
@@ -5361,34 +6915,39 @@ jobs:
           </body>
 
           </html>
+
           EOF
 
 
       - name: Verify dashboard
 
         run: |
+
           echo "Checking generated dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
-          grep -q "capabilities" site/index.html
-          grep -q "Carried Over" site/index.html
-          grep -q "Work by Type" site/index.html
-          grep -q "Work by Size" site/index.html
-          grep -q "LOE" site/index.html
+          grep -q "Overview" site/index.html
+          grep -q "Scope &amp; Carryover" site/index.html
+          grep -q "Quality" site/index.html
+          grep -q "Added Late" site/index.html
+          grep -q "Flow by Priority" site/index.html
+          grep -q "committedEntry" site/index.html
+          grep -q "carryoverEntry" site/index.html
 
           echo
-          echo "Generated project data:"
+          echo "Generated data files:"
+
           ls -la site/data
 
           echo
           echo "Projects:"
+
           cat site/data/projects.json
 
 
       - name: Upload Pages artifact
 
-        uses:
-          actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v3
 
         with:
           path: ./site
@@ -5398,16 +6957,12 @@ jobs:
 
     environment:
 
-      name:
-        github-pages
+      name: github-pages
 
-      url:
-        ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
 
 
-    runs-on:
-      ubuntu-latest
-
+    runs-on: ubuntu-latest
 
     needs:
       build
@@ -5417,8 +6972,6 @@ jobs:
 
       - name: Deploy Pages
 
-        id:
-          deployment
+        id: deployment
 
-        uses:
-          actions/deploy-pages@v4
+        uses: actions/deploy-pages@v4

@@ -1,4 +1,4 @@
-name: Engineering Dashboard - Drilldown V2
+name: Sprint Analytics
 
 on:
   workflow_dispatch:
@@ -296,7 +296,7 @@ jobs:
 
           def issue_priority(issue, item):
 
-              # Prefer issue custom field
+              # Prefer issue-level custom Priority field
               for value in (
                   issue
                   .get("issueFieldValues", {})
@@ -310,7 +310,7 @@ jobs:
                           or "Unspecified"
                       )
 
-              # Fall back to Project Priority
+              # Fall back to project-level Priority
               for value in (
                   item
                   .get("fieldValues", {})
@@ -363,7 +363,7 @@ jobs:
                           "url": pv2["url"],
                       }
 
-                      # Discover sprint/iteration definitions
+                      # Discover sprint / iteration definitions
                       for field in pv2["fields"]["nodes"]:
 
                           config = (
@@ -659,7 +659,7 @@ jobs:
       # Dashboard HTML
       # ======================================================
 
-      - name: Create DRILLDOWN V2 dashboard
+      - name: Create Sprint Analytics dashboard
         run: |
           cat > site/index.html <<'EOF'
           <!doctype html>
@@ -676,7 +676,7 @@ jobs:
             >
 
             <title>
-              Engineering Dashboards - DRILLDOWN V2
+              Sprint Analytics
             </title>
 
             <script
@@ -730,21 +730,6 @@ jobs:
 
               .muted {
                 color: var(--muted);
-              }
-
-              .version {
-                display: inline-block;
-
-                margin-left: 8px;
-                padding: 3px 7px;
-
-                border-radius: 5px;
-
-                background: #dbeafe;
-                color: #1d4ed8;
-
-                font-size: 11px;
-                font-weight: 700;
               }
 
               .toolbar {
@@ -1059,15 +1044,8 @@ jobs:
             <main>
 
               <h1>
-                Engineering Dashboards
-                <span class="version">
-                  DRILLDOWN V2
-                </span>
+                Sprint Analytics
               </h1>
-
-              <div class="muted">
-                Real GitHub Project data
-              </div>
 
 
               <div class="toolbar">
@@ -1083,9 +1061,7 @@ jobs:
               </div>
 
 
-              <!-- =========================================
-                   KPI cards
-                   ========================================= -->
+              <!-- KPI cards -->
 
               <section class="kpis">
 
@@ -1176,9 +1152,7 @@ jobs:
               </section>
 
 
-              <!-- =========================================
-                   Charts
-                   ========================================= -->
+              <!-- Charts -->
 
               <div class="grid">
 
@@ -1226,9 +1200,7 @@ jobs:
               </div>
 
 
-              <!-- =========================================
-                   Priority table
-                   ========================================= -->
+              <!-- Priority table -->
 
               <section class="card">
 
@@ -1269,9 +1241,7 @@ jobs:
             </main>
 
 
-            <!-- ===========================================
-                 DRILLDOWN
-                 =========================================== -->
+            <!-- Drilldown -->
 
             <div
               id="drilldownBackdrop"
@@ -1330,48 +1300,39 @@ jobs:
                           Type
                         </th>
 
-                        <th
-                          data-field="opened">
+                        <th data-field="opened">
                           Open Date
                         </th>
 
-                        <th
-                          data-field="Scoping">
+                        <th data-field="Scoping">
                           Scoping
                         </th>
 
-                        <th
-                          data-field="In Development">
+                        <th data-field="In Development">
                           In Development
                         </th>
 
-                        <th
-                          data-field="QA Testing">
+                        <th data-field="QA Testing">
                           QA Testing
                         </th>
 
-                        <th
-                          data-field="QA Passed">
+                        <th data-field="QA Passed">
                           QA Passed
                         </th>
 
-                        <th
-                          data-field="Test">
+                        <th data-field="Test">
                           Test
                         </th>
 
-                        <th
-                          data-field="Stage">
+                        <th data-field="Stage">
                           Stage
                         </th>
 
-                        <th
-                          data-field="Production">
+                        <th data-field="Production">
                           Production
                         </th>
 
-                        <th
-                          data-field="closed">
+                        <th data-field="closed">
                           Close Date
                         </th>
 
@@ -1406,10 +1367,6 @@ jobs:
 
               let projectData = null;
 
-
-              // ============================================
-              // Basic helpers
-              // ============================================
 
               function within(
                 date,
@@ -1463,26 +1420,11 @@ jobs:
               function escapeHtml(value) {
 
                 return String(value ?? "")
-                  .replaceAll(
-                    "&",
-                    "&amp;"
-                  )
-                  .replaceAll(
-                    "<",
-                    "&lt;"
-                  )
-                  .replaceAll(
-                    ">",
-                    "&gt;"
-                  )
-                  .replaceAll(
-                    '"',
-                    "&quot;"
-                  )
-                  .replaceAll(
-                    "'",
-                    "&#039;"
-                  );
+                  .replaceAll("&","&amp;")
+                  .replaceAll("<","&lt;")
+                  .replaceAll(">","&gt;")
+                  .replaceAll('"',"&quot;")
+                  .replaceAll("'","&#039;");
 
               }
 
@@ -1493,7 +1435,6 @@ jobs:
                   return null;
                 }
 
-
                 const index =
                   Number(
                     document
@@ -1503,7 +1444,6 @@ jobs:
                     .value
                   );
 
-
                 return (
                   projectData.sprints[index]
                   ||
@@ -1512,13 +1452,6 @@ jobs:
 
               }
 
-
-              // ============================================
-              // Status dates
-              //
-              // IMPORTANT:
-              // Returns ALL dates, not only first date.
-              // ============================================
 
               function statusDates(
                 issue,
@@ -1546,21 +1479,14 @@ jobs:
                   return "";
                 }
 
-
                 return dates
-
                   .map(date =>
                     escapeHtml(date)
                   )
-
                   .join("<br>");
 
               }
 
-
-              // ============================================
-              // Counts
-              // ============================================
 
               function uniqueStatusCount(
                 issues,
@@ -1570,7 +1496,6 @@ jobs:
 
                 const ids =
                   new Set();
-
 
                 issues.forEach(issue => {
 
@@ -1596,7 +1521,6 @@ jobs:
 
                 });
 
-
                 return ids.size;
 
               }
@@ -1615,7 +1539,6 @@ jobs:
                       issue.priority === priority
                   );
 
-
                 const opened =
                   issues.filter(issue =>
                     within(
@@ -1624,7 +1547,6 @@ jobs:
                     )
                   );
 
-
                 const closed =
                   issues.filter(issue =>
                     within(
@@ -1632,7 +1554,6 @@ jobs:
                       sprint
                     )
                   );
-
 
                 return {
 
@@ -1678,10 +1599,6 @@ jobs:
               }
 
 
-              // ============================================
-              // Get tickets behind selected metric
-              // ============================================
-
               function matchingIssues(
                 sprint,
                 metric,
@@ -1696,7 +1613,6 @@ jobs:
                       issue.priority === priority
                   );
 
-
                 if (metric === "opened") {
 
                   return issues.filter(
@@ -1709,7 +1625,6 @@ jobs:
 
                 }
 
-
                 if (metric === "closed") {
 
                   return issues.filter(
@@ -1721,7 +1636,6 @@ jobs:
                   );
 
                 }
-
 
                 if (metric === "bugOpened") {
 
@@ -1737,7 +1651,6 @@ jobs:
 
                 }
 
-
                 if (metric === "bugClosed") {
 
                   return issues.filter(
@@ -1752,7 +1665,6 @@ jobs:
 
                 }
 
-
                 const statuses = {
 
                   development:
@@ -1766,15 +1678,12 @@ jobs:
 
                 };
 
-
                 const status =
                   statuses[metric];
-
 
                 if (!status) {
                   return [];
                 }
-
 
                 return issues.filter(issue =>
 
@@ -1796,10 +1705,6 @@ jobs:
               }
 
 
-              // ============================================
-              // Work mix
-              // ============================================
-
               function workedIssues(
                 sprint,
                 type
@@ -1808,13 +1713,11 @@ jobs:
                 const worked =
                   new Set();
 
-
                 projectData.issues
                   .forEach(issue => {
 
                     const id =
                       issueId(issue);
-
 
                     if (
                       within(
@@ -1826,7 +1729,6 @@ jobs:
                       worked.add(id);
 
                     }
-
 
                     issue.events
                       .forEach(event => {
@@ -1846,7 +1748,6 @@ jobs:
 
                   });
 
-
                 return projectData.issues
                   .filter(issue => {
 
@@ -1858,11 +1759,9 @@ jobs:
                       return false;
                     }
 
-
                     if (type === "bug") {
                       return isBug(issue);
                     }
-
 
                     if (
                       type === "enhancement"
@@ -1872,17 +1771,12 @@ jobs:
                       );
                     }
 
-
                     return true;
 
                   });
 
               }
 
-
-              // ============================================
-              // Drilldown
-              // ============================================
 
               function clearHighlights() {
 
@@ -1915,7 +1809,6 @@ jobs:
                   .textContent =
                     title;
 
-
                 document
                   .getElementById(
                     "drilldownSubtitle"
@@ -1926,24 +1819,19 @@ jobs:
                     `${issues.length} issue` +
                     `${issues.length === 1 ? "" : "s"}`;
 
-
                 const tbody =
                   document.getElementById(
                     "drilldownRows"
                   );
-
 
                 const empty =
                   document.getElementById(
                     "drilldownEmpty"
                   );
 
-
                 tbody.innerHTML = "";
 
-
                 clearHighlights();
-
 
                 if (!issues.length) {
 
@@ -1955,13 +1843,11 @@ jobs:
                   empty.style.display =
                     "none";
 
-
                   issues.forEach(issue => {
 
                     const row =
                       document
                       .createElement("tr");
-
 
                     const scoping =
                       statusDates(
@@ -1969,13 +1855,11 @@ jobs:
                         "Scoping"
                       );
 
-
                     const development =
                       statusDates(
                         issue,
                         "In Development"
                       );
-
 
                     const qaTesting =
                       statusDates(
@@ -1983,13 +1867,11 @@ jobs:
                         "QA Testing"
                       );
 
-
                     const qaPassed =
                       statusDates(
                         issue,
                         "QA Passed"
                       );
-
 
                     const test =
                       statusDates(
@@ -1997,13 +1879,11 @@ jobs:
                         "Test"
                       );
 
-
                     const stage =
                       statusDates(
                         issue,
                         "Stage"
                       );
-
 
                     const production =
                       statusDates(
@@ -2011,22 +1891,18 @@ jobs:
                         "Production"
                       );
 
-
                     row.innerHTML = `
 
                       <td class="issue-column">
 
                         <a
                           class="issue-link"
-
                           href="${
                             escapeHtml(
                               issue.url
                             )
                           }"
-
                           target="_blank"
-
                           rel="noopener noreferrer">
 
                           ${
@@ -2197,7 +2073,6 @@ jobs:
 
                     `;
 
-
                     tbody.appendChild(
                       row
                     );
@@ -2205,7 +2080,6 @@ jobs:
                   });
 
                 }
-
 
                 if (highlightField) {
 
@@ -2222,7 +2096,6 @@ jobs:
                     );
 
                 }
-
 
                 document
                   .getElementById(
@@ -2296,10 +2169,6 @@ jobs:
                   }
                 );
 
-
-              // ============================================
-              // Flow chart
-              // ============================================
 
               const flowMetrics = [
                 "opened",
@@ -2385,18 +2254,14 @@ jobs:
                             return;
                           }
 
-
                           const index =
                             elements[0].index;
-
 
                           const metric =
                             flowMetrics[index];
 
-
                           const sprint =
                             selectedSprint();
-
 
                           openDrilldown(
 
@@ -2421,10 +2286,6 @@ jobs:
                   }
                 );
 
-
-              // ============================================
-              // Work mix
-              // ============================================
 
               const mixChart =
                 new Chart(
@@ -2465,14 +2326,11 @@ jobs:
                             return;
                           }
 
-
                           const index =
                             elements[0].index;
 
-
                           const sprint =
                             selectedSprint();
-
 
                           const type =
                             index === 0
@@ -2480,7 +2338,6 @@ jobs:
                             "bug"
                             :
                             "enhancement";
-
 
                           openDrilldown(
 
@@ -2506,31 +2363,23 @@ jobs:
                 );
 
 
-              // ============================================
-              // Render sprint
-              // ============================================
-
               function updateSprint() {
 
                 if (!projectData) {
                   return;
                 }
 
-
                 const sprint =
                   selectedSprint();
-
 
                 if (!sprint) {
                   return;
                 }
 
-
                 const total =
                   calculate(
                     sprint
                   );
-
 
                 document
                   .getElementById(
@@ -2539,14 +2388,12 @@ jobs:
                   .textContent =
                     total.opened;
 
-
                 document
                   .getElementById(
                     "development"
                   )
                   .textContent =
                     total.development;
-
 
                 document
                   .getElementById(
@@ -2555,14 +2402,12 @@ jobs:
                   .textContent =
                     total.qa;
 
-
                 document
                   .getElementById(
                     "passed"
                   )
                   .textContent =
                     total.passed;
-
 
                 document
                   .getElementById(
@@ -2571,8 +2416,6 @@ jobs:
                   .textContent =
                     total.closed;
 
-
-                // KPI clicks
 
                 document
                   .getElementById(
@@ -2659,8 +2502,6 @@ jobs:
                     );
 
 
-                // Chart numbers
-
                 flowChart
                   .data
                   .datasets[0]
@@ -2674,11 +2515,8 @@ jobs:
 
                   ];
 
-
                 flowChart.update();
 
-
-                // Work mix
 
                 const bugs =
                   workedIssues(
@@ -2686,13 +2524,11 @@ jobs:
                     "bug"
                   );
 
-
                 const enhancements =
                   workedIssues(
                     sprint,
                     "enhancement"
                   );
-
 
                 mixChart
                   .data
@@ -2704,17 +2540,13 @@ jobs:
 
                   ];
 
-
                 mixChart.update();
 
-
-                // Priority table
 
                 const tbody =
                   document.getElementById(
                     "rows"
                   );
-
 
                 tbody.innerHTML =
                   "";
@@ -2729,7 +2561,6 @@ jobs:
                         sprint,
                         priority
                       );
-
 
                     const ratio =
                       metrics.bugClosed === 0
@@ -2870,7 +2701,6 @@ jobs:
                               .dataset
                               .metric;
 
-
                             openDrilldown(
 
                               `${priority} · ${
@@ -2909,7 +2739,7 @@ jobs:
 
 
               // ============================================
-              // Project loader
+              // Load Project
               // ============================================
 
               function loadProject(
@@ -2971,11 +2801,49 @@ jobs:
                     );
 
 
-                  sprintSelect.value =
-                    Math.max(
-                      data.sprints.length - 1,
-                      0
-                    );
+                  // ========================================
+                  // Automatically select CURRENT sprint
+                  // ========================================
+
+                  const today =
+                    new Date()
+                      .toISOString()
+                      .slice(0, 10);
+
+
+                  const currentSprintIndex =
+                    data.sprints
+                      .findIndex(
+                        sprint =>
+
+                          today >= sprint.start
+
+                          &&
+
+                          today <= sprint.end
+
+                      );
+
+
+                  if (
+                    currentSprintIndex >= 0
+                  ) {
+
+                    sprintSelect.value =
+                      currentSprintIndex;
+
+                  } else {
+
+                    // No sprint contains today.
+                    // Fall back to latest iteration.
+
+                    sprintSelect.value =
+                      Math.max(
+                        data.sprints.length - 1,
+                        0
+                      );
+
+                  }
 
 
                   updateSprint();
@@ -3078,12 +2946,12 @@ jobs:
           </html>
           EOF
 
-      - name: Verify DRILLDOWN V2 artifact
+
+      - name: Verify dashboard artifact
         run: |
           echo "Checking generated dashboard..."
 
-          grep -q "DRILLDOWN V2" site/index.html
-
+          grep -q "Sprint Analytics" site/index.html
           grep -q "Open Date" site/index.html
           grep -q "Scoping" site/index.html
           grep -q "In Development" site/index.html
@@ -3094,12 +2962,14 @@ jobs:
           grep -q "Production" site/index.html
           grep -q "Close Date" site/index.html
 
-          echo "DRILLDOWN V2 verified."
+          echo "Sprint Analytics dashboard verified."
+
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
+
 
   deploy:
     environment:
@@ -3110,6 +2980,7 @@ jobs:
     needs: build
 
     steps:
+
       - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -652,6 +652,7 @@ jobs:
               },
           )
 
+
           projects = [
               project
 
@@ -1330,10 +1331,28 @@ jobs:
           for project in projects:
               data = load_project(project)
 
+
+              readable_issue_count = len(
+                  data["issues"]
+              )
+
+
+              if readable_issue_count == 0:
+                  print(
+                      f'Skipping Project '
+                      f'{project["number"]}: '
+                      f'{project["title"]} '
+                      f'(no readable issues)'
+                  )
+
+                  continue
+
+
               slug = (
                   f'project-'
                   f'{project["number"]}'
               )
+
 
               Path(
                   f"site/data/{slug}.json"
@@ -1343,6 +1362,7 @@ jobs:
                       indent=2,
                   )
               )
+
 
               project_index.append({
                   "number":
@@ -1363,13 +1383,18 @@ jobs:
                       slug,
 
                   "issueCount":
-                      len(
-                          data["issues"]
-                      ),
+                      readable_issue_count,
 
                   "capabilities":
                       data["capabilities"],
               })
+
+
+          print(
+              f"Publishing "
+              f"{len(project_index)} "
+              f"projects with readable issues"
+          )
 
 
           Path(
@@ -3031,20 +3056,6 @@ jobs:
               }
 
 
-              /*
-               * SPRINT FLOW
-               *
-               * Blue:
-               * issue was actually assigned to the
-               * selected sprint according to sprint
-               * tracker history.
-               *
-               * Orange:
-               * issue had activity during the sprint
-               * window but was NOT assigned to that
-               * sprint.
-               */
-
               const flowChart =
                 new Chart(
                   document.getElementById(
@@ -3135,11 +3146,6 @@ jobs:
                           return;
                         }
 
-                        /*
-                         * Entire Project has only one
-                         * dataset, so use descriptor.issues.
-                         */
-
                         if (
                           descriptor.issues
                         ) {
@@ -3197,12 +3203,6 @@ jobs:
                   :
                   "Sprint Flow";
 
-
-                /*
-                 * ENTIRE PROJECT
-                 *
-                 * No assigned/unassigned distinction.
-                 */
 
                 if (
                   isProjectMode(scope)
@@ -3278,10 +3278,6 @@ jobs:
                 }
 
 
-                /*
-                 * SPRINT MODE
-                 */
-
                 const committedIds =
                   new Set(
                     committedIssues(scope)
@@ -3314,10 +3310,6 @@ jobs:
                   [];
 
 
-                /*
-                 * Opened during the sprint.
-                 */
-
                 const opened =
                   splitIssues(
                     openedIssues(scope)
@@ -3333,10 +3325,6 @@ jobs:
                     opened.unassigned
                 });
 
-
-                /*
-                 * Status activity during the sprint.
-                 */
 
                 projectData
                   .statuses
@@ -3362,10 +3350,6 @@ jobs:
                     }
                   );
 
-
-                /*
-                 * Closed during the sprint.
-                 */
 
                 const closed =
                   splitIssues(
@@ -4511,8 +4495,6 @@ jobs:
           grep -q "Work by Type" site/index.html
           grep -q "Flow by Priority" site/index.html
           grep -q "Bugs by Priority" site/index.html
-
-          # New Sprint Flow verification
           grep -q "Assigned to Sprint" site/index.html
           grep -q "Not Assigned to Sprint" site/index.html
           grep -q "#f58220" site/index.html

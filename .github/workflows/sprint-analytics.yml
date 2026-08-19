@@ -2597,6 +2597,58 @@ jobs:
               }
 
 
+              function meaningfulStatusEvents(
+                issue
+              ) {
+                const events =
+                  (
+                    issue.statusEvents
+                    ||
+                    []
+                  )
+                  .slice()
+                  .sort(
+                    (
+                      a,
+                      b
+                    ) =>
+                      String(
+                        a.date
+                        ||
+                        ""
+                      )
+                      .localeCompare(
+                        String(
+                          b.date
+                          ||
+                          ""
+                        )
+                      )
+                  );
+
+
+                /*
+                 * The first Project status event is the
+                 * automatic default status assignment that
+                 * happens when the issue is added to the
+                 * Project.
+                 *
+                 * It is expected setup, not workflow
+                 * activity, so Sprint Flow ignores it.
+                 *
+                 * Entire Project mode still uses
+                 * currentStatus and is unaffected.
+                 */
+
+                if (!events.length) {
+                  return [];
+                }
+
+
+                return events.slice(1);
+              }
+
+
               function statusIssues(
                 scope,
                 status,
@@ -2635,10 +2687,8 @@ jobs:
                         priority
                       )
                       &&
-                      (
-                        issue.statusEvents
-                        ||
-                        []
+                      meaningfulStatusEvents(
+                        issue
                       )
                       .some(
                         event =>
@@ -2659,10 +2709,8 @@ jobs:
                 issue,
                 status
               ) {
-                return (
-                  issue.statusEvents
-                  ||
-                  []
+                return meaningfulStatusEvents(
+                  issue
                 )
                 .filter(
                   event =>
@@ -2712,10 +2760,8 @@ jobs:
                         );
                       }
 
-                      (
-                        issue.statusEvents
-                        ||
-                        []
+                      meaningfulStatusEvents(
+                        issue
                       )
                       .forEach(
                         event => {
@@ -4498,6 +4544,7 @@ jobs:
           grep -q "Assigned to Sprint" site/index.html
           grep -q "Not Assigned to Sprint" site/index.html
           grep -q "#f58220" site/index.html
+          grep -q "meaningfulStatusEvents" site/index.html
 
           echo "Sprint Analytics dashboard verified."
 

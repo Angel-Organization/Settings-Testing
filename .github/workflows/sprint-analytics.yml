@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
   schedule:
-    # 12:00 UTC = 8:00 AM EDT / 7:00 AM EST
     - cron: "0 12 * * *"
 
 permissions:
@@ -1044,7 +1043,6 @@ jobs:
                       "currentSprint":
                           current_sprint,
 
-                      # Used by Entire Project mode.
                       "currentStatus":
                           current_status,
 
@@ -1083,13 +1081,7 @@ jobs:
                       f'{project["number"]}: '
                       f'[{index}/{len(issues)}] '
                       f'{issue["repository"]}'
-                      f'#{issue["number"]} '
-                      f'Priority='
-                      f'{issue["priority"]} '
-                      f'CurrentSprint='
-                      f'{issue["currentSprint"]} '
-                      f'CurrentStatus='
-                      f'{issue["currentStatus"]}'
+                      f'#{issue["number"]}'
                   )
 
                   try:
@@ -1173,8 +1165,6 @@ jobs:
                       )
 
 
-              # Dashboard structure comes ONLY from
-              # currently configured Status options.
               statuses = []
 
               if status_field:
@@ -1391,67 +1381,31 @@ jobs:
               )
           )
 
-
-          print("")
-          print("Generated projects:")
-
-          print(
-              json.dumps(
-                  project_index,
-                  indent=2,
-              )
-          )
-
           PY
-
 
       - name: Create Sprint Analytics dashboard
         shell: bash
         run: |
           cat > site/index.html <<'EOF'
-
           <!doctype html>
-
           <html lang="en">
-
           <head>
-
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+            <meta http-equiv="Pragma" content="no-cache">
+            <meta http-equiv="Expires" content="0">
 
-            <meta
-              name="viewport"
-              content="width=device-width,initial-scale=1"
-            >
+            <title>Sprint Analytics</title>
 
-            <meta
-              http-equiv="Cache-Control"
-              content="no-cache, no-store, must-revalidate"
-            >
-
-            <meta
-              http-equiv="Pragma"
-              content="no-cache"
-            >
-
-            <meta
-              http-equiv="Expires"
-              content="0"
-            >
-
-            <title>
-              Sprint Analytics
-            </title>
-
-            <script
-              src="https://cdn.jsdelivr.net/npm/chart.js">
-            </script>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
             <style>
-
               :root {
                 --blue: #2499e8;
                 --blue-deep: #0f5f98;
                 --blue-light: #eaf6fd;
+                --orange: #f58220;
                 --green: #49b94f;
                 --navy: #172033;
                 --text: #172033;
@@ -1460,36 +1414,21 @@ jobs:
                 --page-bg: #f4f6f8;
               }
 
-
               * {
-                box-sizing:
-                  border-box;
+                box-sizing: border-box;
               }
-
 
               html,
               body {
-                width:
-                  100%;
-
-                min-height:
-                  100%;
-
-                margin:
-                  0;
+                width: 100%;
+                min-height: 100%;
+                margin: 0;
               }
 
-
               body {
-                overflow-x:
-                  hidden;
-
-                background:
-                  var(--page-bg);
-
-                color:
-                  var(--text);
-
+                overflow-x: hidden;
+                background: var(--page-bg);
+                color: var(--text);
                 font-family:
                   Inter,
                   system-ui,
@@ -1499,897 +1438,426 @@ jobs:
                   sans-serif;
               }
 
-
               main {
-                width:
-                  100%;
-
-                max-width:
-                  1600px;
-
-                margin:
-                  0 auto;
-
-                padding:
-                  0 32px 50px;
+                width: 100%;
+                max-width: 1600px;
+                margin: 0 auto;
+                padding: 0 32px 50px;
               }
-
 
               h1 {
-                margin:
-                  0 -32px;
-
-                padding:
-                  28px 32px 24px;
-
-                background:
-                  var(--blue-deep);
-
-                color:
-                  #ffffff;
-
-                font-size:
-                  30px;
-
-                font-weight:
-                  800;
+                margin: 0 -32px;
+                padding: 28px 32px 24px;
+                background: var(--blue-deep);
+                color: #ffffff;
+                font-size: 30px;
+                font-weight: 800;
               }
-
 
               .toolbar {
-                display:
-                  flex;
-
-                flex-wrap:
-                  wrap;
-
-                gap:
-                  12px;
-
-                margin:
-                  0 -32px 28px;
-
-                padding:
-                  18px 32px;
-
-                border-bottom:
-                  1px solid
-                  var(--border);
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin: 0 -32px 28px;
+                padding: 18px 32px;
+                border-bottom: 1px solid var(--border);
               }
-
 
               select {
-                min-width:
-                  240px;
-
-                padding:
-                  10px 14px;
-
-                background:
-                  #ffffff;
-
-                color:
-                  var(--navy);
-
-                border:
-                  1px solid
-                  var(--border);
-
-                border-radius:
-                  8px;
-
-                font-weight:
-                  700;
+                min-width: 240px;
+                padding: 10px 14px;
+                background: #ffffff;
+                color: var(--navy);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                font-weight: 700;
               }
-
 
               .section {
-                margin-bottom:
-                  36px;
+                margin-bottom: 36px;
               }
-
 
               .section-header {
-                margin-bottom:
-                  14px;
-
-                padding-bottom:
-                  9px;
-
-                border-bottom:
-                  1px solid
-                  var(--border);
+                margin-bottom: 14px;
+                padding-bottom: 9px;
+                border-bottom: 1px solid var(--border);
               }
-
 
               .section-header h2 {
-                margin:
-                  0;
-
-                color:
-                  var(--navy);
-
-                font-size:
-                  20px;
+                margin: 0;
+                color: var(--navy);
+                font-size: 20px;
               }
 
-
               .kpis {
-                display:
-                  grid;
-
+                display: grid;
                 grid-template-columns:
                   repeat(
                     auto-fit,
-                    minmax(
-                      145px,
-                      1fr
-                    )
+                    minmax(145px, 1fr)
                   );
-
-                gap:
-                  14px;
-
-                margin-bottom:
-                  16px;
+                gap: 14px;
+                margin-bottom: 16px;
               }
-
 
               .card {
-                min-width:
-                  0;
-
-                background:
-                  #ffffff;
-
-                border:
-                  1px solid
-                  var(--border);
-
-                border-radius:
-                  14px;
-
-                padding:
-                  18px;
-
+                min-width: 0;
+                background: #ffffff;
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 18px;
                 box-shadow:
                   0 3px 10px
-                  rgba(
-                    23,
-                    32,
-                    51,
-                    .07
-                  );
+                  rgba(23, 32, 51, .07);
               }
-
 
               .clickable {
-                cursor:
-                  pointer;
+                cursor: pointer;
               }
-
 
               .clickable:hover {
                 box-shadow:
                   0 8px 22px
-                  rgba(
-                    23,
-                    32,
-                    51,
-                    .13
-                  );
+                  rgba(23, 32, 51, .13);
               }
-
 
               .label {
-                color:
-                  #586577;
-
-                font-size:
-                  11px;
-
-                font-weight:
-                  800;
-
-                text-transform:
-                  uppercase;
-
-                letter-spacing:
-                  .045em;
+                color: #586577;
+                font-size: 11px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: .045em;
               }
-
 
               .number {
-                margin-top:
-                  6px;
-
-                color:
-                  var(--navy);
-
-                font-size:
-                  31px;
-
-                font-weight:
-                  800;
+                margin-top: 6px;
+                color: var(--navy);
+                font-size: 31px;
+                font-weight: 800;
               }
-
 
               .subnumber {
-                margin-top:
-                  5px;
-
-                color:
-                  var(--muted);
-
-                font-size:
-                  12px;
+                margin-top: 5px;
+                color: var(--muted);
+                font-size: 12px;
               }
-
 
               .status-row {
-                display:
-                  flex;
-
-                flex-wrap:
-                  wrap;
-
-                gap:
-                  8px;
-
-                margin:
-                  4px 0 18px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 4px 0 18px;
               }
-
 
               .status-chip {
-                padding:
-                  7px 11px;
-
-                border:
-                  1px solid
-                  var(--border);
-
-                border-radius:
-                  999px;
-
-                background:
-                  #ffffff;
-
-                color:
-                  var(--navy);
-
-                font-size:
-                  12px;
-
-                cursor:
-                  pointer;
+                padding: 7px 11px;
+                border: 1px solid var(--border);
+                border-radius: 999px;
+                background: #ffffff;
+                color: var(--navy);
+                font-size: 12px;
+                cursor: pointer;
               }
-
 
               .status-chip strong {
-                margin-left:
-                  6px;
-
-                color:
-                  var(--blue-deep);
+                margin-left: 6px;
+                color: var(--blue-deep);
               }
-
 
               .grid-two {
-                display:
-                  grid;
-
+                display: grid;
                 grid-template-columns:
-                  minmax(
-                    0,
-                    2fr
-                  )
-                  minmax(
-                    320px,
-                    1fr
-                  );
-
-                gap:
-                  18px;
-
-                margin-bottom:
-                  18px;
+                  minmax(0, 2fr)
+                  minmax(320px, 1fr);
+                gap: 18px;
+                margin-bottom: 18px;
               }
-
 
               .chart {
-                position:
-                  relative;
-
-                width:
-                  100%;
-
-                height:
-                  330px;
+                position: relative;
+                width: 100%;
+                height: 330px;
               }
-
 
               .chart canvas {
-                display:
-                  block;
-
-                width:
-                  100% !important;
-
-                max-width:
-                  100% !important;
-
-                height:
-                  100% !important;
+                display: block;
+                width: 100% !important;
+                max-width: 100% !important;
+                height: 100% !important;
               }
-
 
               h3 {
-                margin:
-                  0 0 16px;
-
-                color:
-                  var(--navy);
+                margin: 0 0 16px;
+                color: var(--navy);
               }
-
 
               .table-wrap {
-                width:
-                  100%;
-
-                overflow-x:
-                  auto;
+                width: 100%;
+                overflow-x: auto;
               }
-
 
               table {
-                width:
-                  100%;
-
-                border-collapse:
-                  collapse;
+                width: 100%;
+                border-collapse: collapse;
               }
-
 
               th,
               td {
-                padding:
-                  11px;
-
-                border-bottom:
-                  1px solid
-                  #edf0f4;
-
-                text-align:
-                  right;
-
-                vertical-align:
-                  top;
-
-                white-space:
-                  nowrap;
+                padding: 11px;
+                border-bottom: 1px solid #edf0f4;
+                text-align: right;
+                vertical-align: top;
+                white-space: nowrap;
               }
-
 
               th {
-                background:
-                  var(--blue-light);
-
-                color:
-                  var(--blue-deep);
-
-                font-size:
-                  11px;
-
-                font-weight:
-                  800;
-
-                text-transform:
-                  uppercase;
+                background: var(--blue-light);
+                color: var(--blue-deep);
+                font-size: 11px;
+                font-weight: 800;
+                text-transform: uppercase;
               }
-
 
               th:first-child,
               td:first-child {
-                text-align:
-                  left;
+                text-align: left;
               }
-
 
               .metric-cell {
-                color:
-                  var(--blue-deep);
-
-                font-weight:
-                  750;
-
-                text-decoration:
-                  underline dotted;
-
-                text-underline-offset:
-                  3px;
-
-                cursor:
-                  pointer;
+                color: var(--blue-deep);
+                font-weight: 750;
+                text-decoration: underline dotted;
+                text-underline-offset: 3px;
+                cursor: pointer;
               }
-
 
               .hidden {
-                display:
-                  none !important;
+                display: none !important;
               }
-
 
               .modal-backdrop {
-                position:
-                  fixed;
-
-                inset:
-                  0;
-
-                z-index:
-                  1000;
-
-                display:
-                  flex;
-
-                align-items:
-                  center;
-
-                justify-content:
-                  center;
-
-                padding:
-                  18px;
-
-                background:
-                  rgba(
-                    15,
-                    23,
-                    42,
-                    .58
-                  );
+                position: fixed;
+                inset: 0;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                background: rgba(15, 23, 42, .58);
               }
-
 
               .modal {
-                width:
-                  min(
-                    98vw,
-                    1900px
-                  );
-
-                max-height:
-                  92vh;
-
-                overflow:
-                  hidden;
-
-                background:
-                  #ffffff;
-
-                border-radius:
-                  16px;
+                width: min(98vw, 1900px);
+                max-height: 92vh;
+                overflow: hidden;
+                background: #ffffff;
+                border-radius: 16px;
               }
-
 
               .modal-header {
-                display:
-                  flex;
-
-                justify-content:
-                  space-between;
-
-                align-items:
-                  center;
-
-                padding:
-                  20px 24px;
-
-                background:
-                  var(--blue-deep);
-
-                color:
-                  #ffffff;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 20px 24px;
+                background: var(--blue-deep);
+                color: #ffffff;
               }
-
 
               .modal-header h2 {
-                margin:
-                  0 0 4px;
+                margin: 0 0 4px;
               }
-
 
               .modal-subtitle {
-                font-size:
-                  12px;
-
-                color:
-                  rgba(
-                    255,
-                    255,
-                    255,
-                    .84
-                  );
+                font-size: 12px;
+                color: rgba(255, 255, 255, .84);
               }
-
 
               .close-button {
-                border:
-                  0;
-
-                background:
-                  transparent;
-
-                color:
-                  #ffffff;
-
-                font-size:
-                  32px;
-
-                cursor:
-                  pointer;
+                border: 0;
+                background: transparent;
+                color: #ffffff;
+                font-size: 32px;
+                cursor: pointer;
               }
-
 
               .modal-body {
-                max-height:
-                  78vh;
-
-                overflow:
-                  auto;
+                max-height: 78vh;
+                overflow: auto;
               }
-
 
               .drilldown-table {
-                width:
-                  max-content;
-
-                min-width:
-                  100%;
+                width: max-content;
+                min-width: 100%;
               }
-
 
               .drilldown-table th {
-                position:
-                  sticky;
-
-                top:
-                  0;
-
-                z-index:
-                  4;
+                position: sticky;
+                top: 0;
+                z-index: 4;
               }
-
 
               .issue-link {
-                color:
-                  var(--blue-deep);
-
-                text-decoration:
-                  none;
-
-                font-weight:
-                  750;
+                color: var(--blue-deep);
+                text-decoration: none;
+                font-weight: 750;
               }
-
 
               .title-column {
-                min-width:
-                  280px;
-
-                max-width:
-                  420px;
-
-                white-space:
-                  normal;
-
-                text-align:
-                  left;
+                min-width: 280px;
+                max-width: 420px;
+                white-space: normal;
+                text-align: left;
               }
 
-
-              @media(
-                max-width:900px
-              ) {
-
+              @media(max-width:900px) {
                 main {
-                  padding:
-                    0 18px 30px;
+                  padding: 0 18px 30px;
                 }
-
 
                 h1 {
-                  margin:
-                    0 -18px;
+                  margin: 0 -18px;
                 }
-
 
                 .toolbar {
-                  margin:
-                    0 -18px 24px;
-
-                  padding:
-                    15px 18px;
+                  margin: 0 -18px 24px;
+                  padding: 15px 18px;
                 }
-
 
                 .grid-two {
                   grid-template-columns:
-                    minmax(
-                      0,
-                      1fr
-                    );
+                    minmax(0, 1fr);
                 }
-
 
                 select {
-                  width:
-                    100%;
-
-                  min-width:
-                    0;
+                  width: 100%;
+                  min-width: 0;
                 }
-
               }
-
             </style>
-
           </head>
 
-
           <body>
-
             <main>
-
-              <h1>
-                Sprint Analytics
-              </h1>
-
+              <h1>Sprint Analytics</h1>
 
               <div class="toolbar">
-
-                <select
-                  id="projectSelect">
-                </select>
-
-                <select
-                  id="sprintSelect">
-                </select>
-
+                <select id="projectSelect"></select>
+                <select id="sprintSelect"></select>
               </div>
 
-
               <section class="section">
-
                 <div class="section-header">
-
-                  <h2>
-                    Overview
-                  </h2>
-
+                  <h2>Overview</h2>
                 </div>
 
+                <div id="overviewKpis" class="kpis"></div>
 
-                <div
-                  id="overviewKpis"
-                  class="kpis">
-                </div>
-
-
-                <div
-                  id="statusRow"
-                  class="status-row">
-                </div>
-
+                <div id="statusRow" class="status-row"></div>
 
                 <div class="grid-two">
-
                   <div class="card">
-
-                    <h3
-                      id="flowTitle">
+                    <h3 id="flowTitle">
                       Sprint Flow
                     </h3>
 
                     <div class="chart">
-
-                      <canvas
-                        id="flowChart">
-                      </canvas>
-
+                      <canvas id="flowChart"></canvas>
                     </div>
-
                   </div>
-
 
                   <div class="card">
-
-                    <h3>
-                      Work by Type
-                    </h3>
+                    <h3>Work by Type</h3>
 
                     <div class="chart">
-
-                      <canvas
-                        id="typeChart">
-                      </canvas>
-
+                      <canvas id="typeChart"></canvas>
                     </div>
-
                   </div>
-
                 </div>
 
-
-                <div
-                  id="priorityCard"
-                  class="card">
-
-                  <h3>
-                    Flow by Priority
-                  </h3>
+                <div id="priorityCard" class="card">
+                  <h3>Flow by Priority</h3>
 
                   <div class="table-wrap">
-
                     <table>
-
                       <thead>
-
-                        <tr
-                          id="priorityHeader">
-                        </tr>
-
+                        <tr id="priorityHeader"></tr>
                       </thead>
 
-                      <tbody
-                        id="priorityRows">
-                      </tbody>
-
+                      <tbody id="priorityRows"></tbody>
                     </table>
-
                   </div>
-
                 </div>
-
               </section>
-
 
               <section class="section">
-
                 <div class="section-header">
-
-                  <h2>
-                    Quality
-                  </h2>
-
+                  <h2>Quality</h2>
                 </div>
 
+                <div id="qualityKpis" class="kpis"></div>
 
-                <div
-                  id="qualityKpis"
-                  class="kpis">
-                </div>
-
-
-                <div
-                  id="qualityPriorityCard"
-                  class="card">
-
-                  <h3>
-                    Bugs by Priority
-                  </h3>
+                <div id="qualityPriorityCard" class="card">
+                  <h3>Bugs by Priority</h3>
 
                   <div class="table-wrap">
-
                     <table>
-
                       <thead>
-
                         <tr>
-                          <th>
-                            Priority
-                          </th>
-
-                          <th>
-                            Bugs Opened
-                          </th>
-
-                          <th>
-                            Bugs Closed
-                          </th>
-
-                          <th>
-                            C/R
-                          </th>
+                          <th>Priority</th>
+                          <th>Bugs Opened</th>
+                          <th>Bugs Closed</th>
+                          <th>C/R</th>
                         </tr>
-
                       </thead>
 
-                      <tbody
-                        id="qualityPriorityRows">
-                      </tbody>
-
+                      <tbody id="qualityPriorityRows"></tbody>
                     </table>
-
                   </div>
-
                 </div>
-
               </section>
-
             </main>
-
 
             <div
               id="drilldownBackdrop"
-              class="modal-backdrop hidden">
-
+              class="modal-backdrop hidden"
+            >
               <div class="modal">
-
                 <div class="modal-header">
-
                   <div>
-
-                    <h2
-                      id="drilldownTitle">
-                    </h2>
+                    <h2 id="drilldownTitle"></h2>
 
                     <div
                       id="drilldownSubtitle"
-                      class="modal-subtitle">
-                    </div>
-
+                      class="modal-subtitle"
+                    ></div>
                   </div>
-
 
                   <button
                     id="closeDrilldown"
                     class="close-button"
-                    type="button">
-
+                    type="button"
+                  >
                     ×
-
                   </button>
-
                 </div>
-
 
                 <div class="modal-body">
-
-                  <table
-                    class="drilldown-table">
-
+                  <table class="drilldown-table">
                     <thead>
-
-                      <tr
-                        id="drilldownHeader">
-                      </tr>
-
+                      <tr id="drilldownHeader"></tr>
                     </thead>
 
-                    <tbody
-                      id="drilldownRows">
-                      </tbody>
-
+                    <tbody id="drilldownRows"></tbody>
                   </table>
-
                 </div>
-
               </div>
-
             </div>
 
-
             <script>
-
-              let projectData =
-                null;
-
+              let projectData = null;
 
               const cacheVersion =
                 Date.now();
-
 
               const TYPE_COLORS = [
                 "#2499e8",
@@ -2407,41 +1875,19 @@ jobs:
               ];
 
 
-              // ===========================================
-              // Basic helpers
-              // ===========================================
-
               function escapeHtml(value) {
-
                 return String(
                   value ?? ""
                 )
-                .replaceAll(
-                  "&",
-                  "&amp;"
-                )
-                .replaceAll(
-                  "<",
-                  "&lt;"
-                )
-                .replaceAll(
-                  ">",
-                  "&gt;"
-                )
-                .replaceAll(
-                  '"',
-                  "&quot;"
-                )
-                .replaceAll(
-                  "'",
-                  "&#039;"
-                );
-
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
               }
 
 
               function cap(name) {
-
                 return (
                   projectData
                   ?.capabilities
@@ -2450,12 +1896,10 @@ jobs:
                   ===
                   true
                 );
-
               }
 
 
               function issueId(issue) {
-
                 return (
                   issue.repository
                   +
@@ -2463,12 +1907,10 @@ jobs:
                   +
                   issue.number
                 );
-
               }
 
 
               function isClosed(issue) {
-
                 return (
                   String(
                     issue.state
@@ -2479,7 +1921,6 @@ jobs:
                   ===
                   "CLOSED"
                 );
-
               }
 
 
@@ -2487,60 +1928,38 @@ jobs:
                 date,
                 sprint
               ) {
-
                 return Boolean(
                   date
                   &&
-                  date >=
-                  sprint.start
+                  date >= sprint.start
                   &&
-                  date <=
-                  sprint.end
+                  date <= sprint.end
                 );
-
               }
 
 
               function localToday() {
-
                 const now =
                   new Date();
-
 
                 const year =
                   now.getFullYear();
 
-
                 const month =
                   String(
-                    now.getMonth()
-                    +
-                    1
+                    now.getMonth() + 1
                   )
-                  .padStart(
-                    2,
-                    "0"
-                  );
-
+                  .padStart(2, "0");
 
                 const day =
                   String(
                     now.getDate()
                   )
-                  .padStart(
-                    2,
-                    "0"
-                  );
-
+                  .padStart(2, "0");
 
                 return (
-                  `${year}-`
-                  +
-                  `${month}-`
-                  +
-                  `${day}`
+                  `${year}-${month}-${day}`
                 );
-
               }
 
 
@@ -2548,7 +1967,6 @@ jobs:
                 dateString,
                 days
               ) {
-
                 const [
                   year,
                   month,
@@ -2557,7 +1975,6 @@ jobs:
                   dateString
                   .split("-")
                   .map(Number);
-
 
                 const date =
                   new Date(
@@ -2568,42 +1985,22 @@ jobs:
                     )
                   );
 
-
                 date.setUTCDate(
                   date.getUTCDate()
                   +
                   days
                 );
 
-
                 return date
                   .toISOString()
-                  .slice(
-                    0,
-                    10
-                  );
-
+                  .slice(0, 10);
               }
 
 
-              /*
-               * The selector now has two kinds of values:
-               *
-               * project
-               *
-               * sprint:0
-               * sprint:1
-               * ...
-               */
-
               function selectedScope() {
-
                 if (!projectData) {
-
                   return null;
-
                 }
-
 
                 const value =
                   document
@@ -2612,71 +2009,46 @@ jobs:
                   )
                   .value;
 
-
                 if (
                   value
                   ===
                   "project"
                 ) {
-
                   return {
-
-                    mode:
-                      "project",
-
-                    name:
-                      "Entire Project",
-
+                    mode: "project",
+                    name: "Entire Project"
                   };
-
                 }
-
 
                 if (
                   value.startsWith(
                     "sprint:"
                   )
                 ) {
-
                   const index =
                     Number(
                       value.split(":")[1]
                     );
 
-
                   const sprint =
                     projectData
                     .sprints[index];
 
-
                   if (!sprint) {
-
                     return null;
-
                   }
 
-
                   return {
-
-                    mode:
-                      "sprint",
-
-                    ...sprint,
-
+                    mode: "sprint",
+                    ...sprint
                   };
-
                 }
 
-
                 return null;
-
               }
 
 
-              function isProjectMode(
-                scope
-              ) {
-
+              function isProjectMode(scope) {
                 return (
                   scope
                   &&
@@ -2684,85 +2056,58 @@ jobs:
                   ===
                   "project"
                 );
-
               }
 
 
-              function sumLoe(
-                issues
-              ) {
-
+              function sumLoe(issues) {
                 return issues.reduce(
                   (
                     total,
                     issue
                   ) => {
-
                     const value =
                       Number(
                         issue.loe
                       );
 
-
                     return (
                       total
                       +
                       (
-                        Number.isFinite(
-                          value
-                        )
+                        Number.isFinite(value)
                         ?
                         value
                         :
                         0
                       )
                     );
-
                   },
                   0
                 );
-
               }
 
 
-              function formatDays(
-                value
-              ) {
-
+              function formatDays(value) {
                 const numeric =
                   Number(value);
 
-
                 return (
                   (
-                    Number.isFinite(
-                      numeric
-                    )
+                    Number.isFinite(numeric)
                     ?
                     numeric
                     :
                     0
                   )
                   .toFixed(1)
-                  .replace(
-                    /\.0$/,
-                    ""
-                  )
+                  .replace(/\.0$/, "")
                   +
                   " days"
                 );
-
               }
 
 
-              // ===========================================
-              // Sprint history
-              // ===========================================
-
-              function transitions(
-                issue
-              ) {
-
+              function transitions(issue) {
                 return (
                   issue
                   .sprintTransitions
@@ -2788,14 +2133,10 @@ jobs:
                       )
                     )
                 );
-
               }
 
 
-              function isSprint(
-                value
-              ) {
-
+              function isSprint(value) {
                 return /^sprint\b/i
                   .test(
                     String(
@@ -2805,7 +2146,6 @@ jobs:
                     )
                     .trim()
                   );
-
               }
 
 
@@ -2813,17 +2153,13 @@ jobs:
                 issue,
                 sprint
               ) {
-
-                return transitions(
-                  issue
-                )
-                .filter(
-                  event =>
-                    event.to
-                    ===
-                    sprint.name
-                );
-
+                return transitions(issue)
+                  .filter(
+                    event =>
+                      event.to
+                      ===
+                      sprint.name
+                  );
               }
 
 
@@ -2831,21 +2167,17 @@ jobs:
                 issue,
                 sprint
               ) {
-
-                return transitions(
-                  issue
-                )
-                .filter(
-                  event =>
-                    event.from
-                    ===
-                    sprint.name
-                    &&
-                    event.to
-                    !==
-                    sprint.name
-                );
-
+                return transitions(issue)
+                  .filter(
+                    event =>
+                      event.from
+                      ===
+                      sprint.name
+                      &&
+                      event.to
+                      !==
+                      sprint.name
+                  );
               }
 
 
@@ -2853,13 +2185,11 @@ jobs:
                 issue,
                 sprint
               ) {
-
                 const entries =
                   entriesIntoSprint(
                     issue,
                     sprint
                   );
-
 
                 return (
                   entries.length
@@ -2868,14 +2198,10 @@ jobs:
                   :
                   null
                 );
-
               }
 
 
-              function committedIssues(
-                sprint
-              ) {
-
+              function committedIssues(sprint) {
                 return projectData
                   .issues
                   .filter(
@@ -2887,26 +2213,20 @@ jobs:
                         )
                       )
                   );
-
               }
 
 
-              function carriedOverIssues(
-                sprint
-              ) {
-
+              function carriedOverIssues(sprint) {
                 return committedIssues(
                   sprint
                 )
                 .filter(
                   issue => {
-
                     const entry =
                       firstEntry(
                         issue,
                         sprint
                       );
-
 
                     return Boolean(
                       entry
@@ -2919,47 +2239,35 @@ jobs:
                       !==
                       sprint.name
                     );
-
                   }
                 );
-
               }
 
 
-              function lateCutoff(
-                sprint
-              ) {
-
+              function lateCutoff(sprint) {
                 return addDays(
                   sprint.start,
                   1
                 );
-
               }
 
 
-              function addedLateIssues(
-                sprint
-              ) {
-
+              function addedLateIssues(sprint) {
                 const cutoff =
                   lateCutoff(
                     sprint
                   );
-
 
                 return committedIssues(
                   sprint
                 )
                 .filter(
                   issue => {
-
                     const entry =
                       firstEntry(
                         issue,
                         sprint
                       );
-
 
                     return Boolean(
                       entry
@@ -2968,36 +2276,26 @@ jobs:
                       >
                       cutoff
                     );
-
                   }
                 );
-
               }
 
 
-              function removedIssues(
-                sprint
-              ) {
-
+              function removedIssues(sprint) {
                 return committedIssues(
                   sprint
                 )
                 .filter(
                   issue => {
-
                     const entry =
                       firstEntry(
                         issue,
                         sprint
                       );
 
-
                     if (!entry) {
-
                       return false;
-
                     }
-
 
                     return exitsFromSprint(
                       issue,
@@ -3017,10 +2315,8 @@ jobs:
                           entry.date
                         )
                     );
-
                   }
                 );
-
               }
 
 
@@ -3028,20 +2324,15 @@ jobs:
                 issue,
                 sprint
               ) {
-
                 const entry =
                   firstEntry(
                     issue,
                     sprint
                   );
 
-
                 if (!entry) {
-
                   return "";
-
                 }
-
 
                 const late =
                   (
@@ -3052,13 +2343,11 @@ jobs:
                     )
                   );
 
-
                 if (
                   isSprint(
                     entry.from
                   )
                 ) {
-
                   return (
                     late
                     ?
@@ -3066,9 +2355,7 @@ jobs:
                     :
                     "Carryover"
                   );
-
                 }
-
 
                 return (
                   late
@@ -3077,7 +2364,6 @@ jobs:
                   :
                   "Committed"
                 );
-
               }
 
 
@@ -3085,13 +2371,11 @@ jobs:
                 issue,
                 sprint
               ) {
-
                 const entry =
                   firstEntry(
                     issue,
                     sprint
                   );
-
 
                 if (
                   !entry
@@ -3100,49 +2384,33 @@ jobs:
                     entry.from
                   )
                 ) {
-
                   return "";
-
                 }
 
-
                 return entry.from;
-
               }
 
-
-              // ===========================================
-              // Scope-aware metrics
-              // ===========================================
 
               function totalIssues(
                 scope,
                 priority = null
               ) {
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return projectData
                     .issues
                     .filter(
                       issue =>
                         (
-                          priority
-                          ===
-                          null
+                          priority === null
                           ||
                           issue.priority
                           ===
                           priority
                         )
                     );
-
                 }
-
 
                 return committedIssues(
                   scope
@@ -3150,16 +2418,13 @@ jobs:
                 .filter(
                   issue =>
                     (
-                      priority
-                      ===
-                      null
+                      priority === null
                       ||
                       issue.priority
                       ===
                       priority
                     )
                 );
-
               }
 
 
@@ -3167,29 +2432,21 @@ jobs:
                 scope,
                 priority = null
               ) {
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return totalIssues(
                     scope,
                     priority
                   );
-
                 }
-
 
                 return projectData
                   .issues
                   .filter(
                     issue =>
                       (
-                        priority
-                        ===
-                        null
+                        priority === null
                         ||
                         issue.priority
                         ===
@@ -3201,7 +2458,6 @@ jobs:
                         scope
                       )
                   );
-
               }
 
 
@@ -3209,18 +2465,14 @@ jobs:
                 scope,
                 priority = null
               ) {
-
                 return totalIssues(
                   scope,
                   priority
                 )
                 .filter(
                   issue =>
-                    !isClosed(
-                      issue
-                    )
+                    !isClosed(issue)
                 );
-
               }
 
 
@@ -3228,32 +2480,22 @@ jobs:
                 scope,
                 priority = null
               ) {
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return totalIssues(
                     scope,
                     priority
                   )
-                  .filter(
-                    isClosed
-                  );
-
+                  .filter(isClosed);
                 }
-
 
                 return projectData
                   .issues
                   .filter(
                     issue =>
                       (
-                        priority
-                        ===
-                        null
+                        priority === null
                         ||
                         issue.priority
                         ===
@@ -3265,24 +2507,19 @@ jobs:
                         scope
                       )
                   );
-
               }
 
 
               function completedCommittedIssues(
                 sprint
               ) {
-
                 const ids =
                   new Set(
                     committedIssues(
                       sprint
                     )
-                    .map(
-                      issueId
-                    )
+                    .map(issueId)
                   );
-
 
                 return closedIssues(
                   sprint
@@ -3293,58 +2530,35 @@ jobs:
                       issueId(issue)
                     )
                 );
-
               }
 
 
-              function completionRate(
-                scope
-              ) {
-
+              function completionRate(scope) {
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   const total =
-                    totalIssues(
-                      scope
-                    );
-
+                    totalIssues(scope);
 
                   if (!total.length) {
-
                     return 0;
-
                   }
 
-
                   return (
-                    closedIssues(
-                      scope
-                    ).length
+                    closedIssues(scope).length
                     /
                     total.length
                     *
                     100
                   );
-
                 }
-
 
                 const committed =
-                  committedIssues(
-                    scope
-                  );
-
+                  committedIssues(scope);
 
                 if (!committed.length) {
-
                   return 0;
-
                 }
-
 
                 return (
                   completedCommittedIssues(
@@ -3355,34 +2569,23 @@ jobs:
                   *
                   100
                 );
-
               }
 
-
-              // ===========================================
-              // Status metrics
-              // ===========================================
 
               function statusIssues(
                 scope,
                 status,
                 priority = null
               ) {
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return projectData
                     .issues
                     .filter(
                       issue =>
                         (
-                          priority
-                          ===
-                          null
+                          priority === null
                           ||
                           issue.priority
                           ===
@@ -3393,18 +2596,14 @@ jobs:
                         ===
                         status
                     );
-
                 }
-
 
                 return projectData
                   .issues
                   .filter(
                     issue =>
                       (
-                        priority
-                        ===
-                        null
+                        priority === null
                         ||
                         issue.priority
                         ===
@@ -3428,7 +2627,6 @@ jobs:
                           )
                       )
                   );
-
               }
 
 
@@ -3436,7 +2634,6 @@ jobs:
                 issue,
                 status
               ) {
-
                 return (
                   issue.statusEvents
                   ||
@@ -3453,59 +2650,42 @@ jobs:
                     event.date
                 )
                 .sort();
-
               }
 
 
-              function workedIssues(
-                scope
-              ) {
-
+              function workedIssues(scope) {
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return projectData
                     .issues;
-
                 }
-
 
                 const ids =
                   new Set();
 
-
-                committedIssues(
-                  scope
-                )
-                .forEach(
-                  issue =>
-                    ids.add(
-                      issueId(issue)
-                    )
-                );
-
+                committedIssues(scope)
+                  .forEach(
+                    issue =>
+                      ids.add(
+                        issueId(issue)
+                      )
+                  );
 
                 projectData
                   .issues
                   .forEach(
                     issue => {
-
                       if (
                         within(
                           issue.closed,
                           scope
                         )
                       ) {
-
                         ids.add(
                           issueId(issue)
                         );
-
                       }
-
 
                       (
                         issue.statusEvents
@@ -3514,26 +2694,20 @@ jobs:
                       )
                       .forEach(
                         event => {
-
                           if (
                             within(
                               event.date,
                               scope
                             )
                           ) {
-
                             ids.add(
                               issueId(issue)
                             );
-
                           }
-
                         }
                       );
-
                     }
                   );
-
 
                 return projectData
                   .issues
@@ -3543,18 +2717,10 @@ jobs:
                         issueId(issue)
                       )
                   );
-
               }
 
 
-              // ===========================================
-              // Bugs
-              // ===========================================
-
-              function isBug(
-                issue
-              ) {
-
+              function isBug(issue) {
                 return (
                   String(
                     issue.issueType
@@ -3565,7 +2731,6 @@ jobs:
                   ===
                   "bug"
                 );
-
               }
 
 
@@ -3573,32 +2738,21 @@ jobs:
                 scope,
                 priority = null
               ) {
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   return totalIssues(
                     scope,
                     priority
                   )
-                  .filter(
-                    isBug
-                  );
-
+                  .filter(isBug);
                 }
-
 
                 return openedIssues(
                   scope,
                   priority
                 )
-                .filter(
-                  isBug
-                );
-
+                .filter(isBug);
               }
 
 
@@ -3606,21 +2760,13 @@ jobs:
                 scope,
                 priority = null
               ) {
-
                 return closedIssues(
                   scope,
                   priority
                 )
-                .filter(
-                  isBug
-                );
-
+                .filter(isBug);
               }
 
-
-              // ===========================================
-              // KPI rendering
-              // ===========================================
 
               function addKpi(
                 container,
@@ -3629,13 +2775,11 @@ jobs:
                 issues = null,
                 subtext = ""
               ) {
-
                 const card =
                   document
                   .createElement(
                     "div"
                   );
-
 
                 card.className =
                   issues
@@ -3644,23 +2788,13 @@ jobs:
                   :
                   "card";
 
-
                 card.innerHTML = `
-
                   <div class="label">
-                    ${
-                      escapeHtml(
-                        label
-                      )
-                    }
+                    ${escapeHtml(label)}
                   </div>
 
                   <div class="number">
-                    ${
-                      escapeHtml(
-                        value
-                      )
-                    }
+                    ${escapeHtml(value)}
                   </div>
 
                   ${
@@ -3668,22 +2802,15 @@ jobs:
                     ?
                     `
                     <div class="subnumber">
-                      ${
-                        escapeHtml(
-                          subtext
-                        )
-                      }
+                      ${escapeHtml(subtext)}
                     </div>
                     `
                     :
                     ""
                   }
-
                 `;
 
-
                 if (issues) {
-
                   card.onclick =
                     () =>
                       openDrilldown(
@@ -3691,54 +2818,34 @@ jobs:
                         selectedScope(),
                         issues
                       );
-
                 }
-
 
                 container.appendChild(
                   card
                 );
-
               }
 
 
-              function renderOverview(
-                scope
-              ) {
-
+              function renderOverview(scope) {
                 const container =
                   document.getElementById(
                     "overviewKpis"
                   );
 
-
                 container.innerHTML =
                   "";
 
-
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
                   const total =
-                    totalIssues(
-                      scope
-                    );
-
+                    totalIssues(scope);
 
                   const open =
-                    openIssues(
-                      scope
-                    );
-
+                    openIssues(scope);
 
                   const closed =
-                    closedIssues(
-                      scope
-                    );
-
+                    closedIssues(scope);
 
                   addKpi(
                     container,
@@ -3747,14 +2854,12 @@ jobs:
                     total
                   );
 
-
                   addKpi(
                     container,
                     "Open",
                     open.length,
                     open
                   );
-
 
                   addKpi(
                     container,
@@ -3763,57 +2868,34 @@ jobs:
                     closed
                   );
 
-
                   addKpi(
                     container,
                     "Completion",
                     (
-                      completionRate(
-                        scope
-                      )
+                      completionRate(scope)
                       .toFixed(0)
                       +
                       "%"
                     )
                   );
-
                 } else {
-
                   const opened =
-                    openedIssues(
-                      scope
-                    );
-
+                    openedIssues(scope);
 
                   const committed =
-                    committedIssues(
-                      scope
-                    );
-
+                    committedIssues(scope);
 
                   const carried =
-                    carriedOverIssues(
-                      scope
-                    );
-
+                    carriedOverIssues(scope);
 
                   const late =
-                    addedLateIssues(
-                      scope
-                    );
-
+                    addedLateIssues(scope);
 
                   const removed =
-                    removedIssues(
-                      scope
-                    );
-
+                    removedIssues(scope);
 
                   const closed =
-                    closedIssues(
-                      scope
-                    );
-
+                    closedIssues(scope);
 
                   addKpi(
                     container,
@@ -3821,7 +2903,6 @@ jobs:
                     opened.length,
                     opened
                   );
-
 
                   addKpi(
                     container,
@@ -3831,14 +2912,11 @@ jobs:
                     cap("loe")
                     ?
                     `${formatDays(
-                      sumLoe(
-                        committed
-                      )
+                      sumLoe(committed)
                     )} LOE`
                     :
                     ""
                   );
-
 
                   addKpi(
                     container,
@@ -3848,14 +2926,11 @@ jobs:
                     cap("loe")
                     ?
                     `${formatDays(
-                      sumLoe(
-                        carried
-                      )
+                      sumLoe(carried)
                     )} LOE`
                     :
                     ""
                   );
-
 
                   addKpi(
                     container,
@@ -3865,14 +2940,11 @@ jobs:
                     cap("loe")
                     ?
                     `${formatDays(
-                      sumLoe(
-                        late
-                      )
+                      sumLoe(late)
                     )} LOE`
                     :
                     ""
                   );
-
 
                   addKpi(
                     container,
@@ -3881,7 +2953,6 @@ jobs:
                     removed
                   );
 
-
                   addKpi(
                     container,
                     "Closed",
@@ -3889,74 +2960,43 @@ jobs:
                     closed
                   );
 
-
                   addKpi(
                     container,
                     "Completion",
                     (
-                      completionRate(
-                        scope
-                      )
+                      completionRate(scope)
                       .toFixed(0)
                       +
                       "%"
                     )
                   );
-
                 }
 
-
-                renderStatuses(
-                  scope
-                );
-
-
-                renderFlow(
-                  scope
-                );
-
-
-                renderType(
-                  scope
-                );
-
-
-                renderPriority(
-                  scope
-                );
-
+                renderStatuses(scope);
+                renderFlow(scope);
+                renderType(scope);
+                renderPriority(scope);
               }
 
 
-              // ===========================================
-              // Small Status pills
-              // ===========================================
-
-              function renderStatuses(
-                scope
-              ) {
-
+              function renderStatuses(scope) {
                 const row =
                   document.getElementById(
                     "statusRow"
                   );
 
-
                 row.innerHTML =
                   "";
-
 
                 projectData
                   .statuses
                   .forEach(
                     status => {
-
                       const issues =
                         statusIssues(
                           scope,
                           status
                         );
-
 
                       const button =
                         document
@@ -3964,27 +3004,16 @@ jobs:
                           "button"
                         );
 
-
                       button.className =
                         "status-chip";
 
-
                       button.innerHTML = `
-
-                        ${
-                          escapeHtml(
-                            status
-                          )
-                        }
+                        ${escapeHtml(status)}
 
                         <strong>
-                          ${
-                            issues.length
-                          }
+                          ${issues.length}
                         </strong>
-
                       `;
-
 
                       button.onclick =
                         () =>
@@ -3994,20 +3023,27 @@ jobs:
                             issues
                           );
 
-
                       row.appendChild(
                         button
                       );
-
                     }
                   );
-
               }
 
 
-              // ===========================================
-              // Flow chart
-              // ===========================================
+              /*
+               * SPRINT FLOW
+               *
+               * Blue:
+               * issue was actually assigned to the
+               * selected sprint according to sprint
+               * tracker history.
+               *
+               * Orange:
+               * issue had activity during the sprint
+               * window but was NOT assigned to that
+               * sprint.
+               */
 
               const flowChart =
                 new Chart(
@@ -4015,221 +3051,336 @@ jobs:
                     "flowChart"
                   ),
                   {
-
-                    type:
-                      "bar",
+                    type: "bar",
 
                     data: {
+                      labels: [],
 
-                      labels:
-                        [],
+                      datasets: [
+                        {
+                          label:
+                            "Assigned to Sprint",
 
-                      datasets: [{
+                          data: [],
 
-                        data:
-                          [],
+                          backgroundColor:
+                            "#2499e8",
 
-                        backgroundColor:
-                          "#2499e8",
+                          borderWidth:
+                            0
+                        },
 
-                        borderWidth:
-                          0
+                        {
+                          label:
+                            "Not Assigned to Sprint",
 
-                      }]
+                          data: [],
 
+                          backgroundColor:
+                            "#f58220",
+
+                          borderWidth:
+                            0
+                        }
+                      ]
                     },
 
                     options: {
-
-                      responsive:
-                        true,
-
-                      maintainAspectRatio:
-                        false,
-
-                      resizeDelay:
-                        100,
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      resizeDelay: 100,
 
                       plugins: {
-
                         legend: {
-                          display:
-                            false
+                          display: true,
+                          position: "bottom"
                         }
-
                       },
 
                       scales: {
+                        x: {
+                          stacked: true
+                        },
 
                         y: {
-                          beginAtZero:
-                            true,
+                          stacked: true,
+                          beginAtZero: true,
 
                           ticks: {
-                            precision:
-                              0
+                            precision: 0
                           }
                         }
-
                       },
 
                       onClick(
                         event,
                         elements
                       ) {
-
                         if (
                           !elements.length
                         ) {
-
                           return;
-
                         }
 
+                        const element =
+                          elements[0];
 
                         const descriptor =
                           flowChart
                           ._descriptors[
-                            elements[0]
-                            .index
+                            element.index
                           ];
 
-
                         if (!descriptor) {
-
                           return;
-
                         }
 
+                        /*
+                         * Entire Project has only one
+                         * dataset, so use descriptor.issues.
+                         */
+
+                        if (
+                          descriptor.issues
+                        ) {
+                          openDrilldown(
+                            descriptor.label,
+                            selectedScope(),
+                            descriptor.issues
+                          );
+
+                          return;
+                        }
+
+                        const issues =
+                          element.datasetIndex
+                          ===
+                          0
+                          ?
+                          descriptor.assigned
+                          :
+                          descriptor.unassigned;
 
                         openDrilldown(
-                          descriptor.label,
+                          (
+                            descriptor.label
+                            +
+                            (
+                              element.datasetIndex
+                              ===
+                              0
+                              ?
+                              " · Assigned to Sprint"
+                              :
+                              " · Not Assigned to Sprint"
+                            )
+                          ),
                           selectedScope(),
-                          descriptor.issues
+                          issues
                         );
-
                       }
-
                     }
-
                   }
                 );
 
 
-              function renderFlow(
-                scope
-              ) {
-
+              function renderFlow(scope) {
                 const title =
                   document.getElementById(
                     "flowTitle"
                   );
 
-
                 title.textContent =
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                   ?
                   "Project Flow"
                   :
                   "Sprint Flow";
 
 
-                let descriptors;
-
+                /*
+                 * ENTIRE PROJECT
+                 *
+                 * No assigned/unassigned distinction.
+                 */
 
                 if (
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                 ) {
-
-                  descriptors = [
-
+                  const descriptors = [
                     {
-                      label:
-                        "Open",
-
+                      label: "Open",
                       issues:
-                        openIssues(
-                          scope
-                        )
+                        openIssues(scope)
                     },
 
                     ...projectData
                     .statuses
                     .map(
                       status => ({
-
-                        label:
-                          status,
+                        label: status,
 
                         issues:
                           statusIssues(
                             scope,
                             status
                           )
-
                       })
                     ),
 
                     {
-                      label:
-                        "Closed",
-
+                      label: "Closed",
                       issues:
-                        closedIssues(
-                          scope
-                        )
+                        closedIssues(scope)
                     }
-
                   ];
 
-                } else {
+                  flowChart
+                    ._descriptors =
+                      descriptors;
 
-                  descriptors = [
+                  flowChart
+                    .data
+                    .labels =
+                      descriptors
+                      .map(
+                        item =>
+                          item.label
+                      );
 
-                    {
-                      label:
-                        "Opened",
+                  flowChart
+                    .data
+                    .datasets =
+                      [
+                        {
+                          label: "Issues",
 
-                      issues:
-                        openedIssues(
-                          scope
-                        )
-                    },
+                          data:
+                            descriptors
+                            .map(
+                              item =>
+                                item
+                                .issues
+                                .length
+                            ),
 
-                    ...projectData
-                    .statuses
-                    .map(
-                      status => ({
+                          backgroundColor:
+                            "#2499e8",
 
-                        label:
-                          status,
+                          borderWidth:
+                            0
+                        }
+                      ];
 
-                        issues:
-                          statusIssues(
-                            scope,
-                            status
-                          )
+                  flowChart.update();
 
-                      })
-                    ),
-
-                    {
-                      label:
-                        "Closed",
-
-                      issues:
-                        closedIssues(
-                          scope
-                        )
-                    }
-
-                  ];
-
+                  return;
                 }
+
+
+                /*
+                 * SPRINT MODE
+                 */
+
+                const committedIds =
+                  new Set(
+                    committedIssues(scope)
+                    .map(issueId)
+                  );
+
+
+                function splitIssues(issues) {
+                  return {
+                    assigned:
+                      issues.filter(
+                        issue =>
+                          committedIds.has(
+                            issueId(issue)
+                          )
+                      ),
+
+                    unassigned:
+                      issues.filter(
+                        issue =>
+                          !committedIds.has(
+                            issueId(issue)
+                          )
+                      )
+                  };
+                }
+
+
+                const descriptors =
+                  [];
+
+
+                /*
+                 * Opened during the sprint.
+                 */
+
+                const opened =
+                  splitIssues(
+                    openedIssues(scope)
+                  );
+
+                descriptors.push({
+                  label: "Opened",
+
+                  assigned:
+                    opened.assigned,
+
+                  unassigned:
+                    opened.unassigned
+                });
+
+
+                /*
+                 * Status activity during the sprint.
+                 */
+
+                projectData
+                  .statuses
+                  .forEach(
+                    status => {
+                      const split =
+                        splitIssues(
+                          statusIssues(
+                            scope,
+                            status
+                          )
+                        );
+
+                      descriptors.push({
+                        label: status,
+
+                        assigned:
+                          split.assigned,
+
+                        unassigned:
+                          split.unassigned
+                      });
+                    }
+                  );
+
+
+                /*
+                 * Closed during the sprint.
+                 */
+
+                const closed =
+                  splitIssues(
+                    closedIssues(scope)
+                  );
+
+                descriptors.push({
+                  label: "Closed",
+
+                  assigned:
+                    closed.assigned,
+
+                  unassigned:
+                    closed.unassigned
+                });
 
 
                 flowChart
@@ -4249,23 +3400,53 @@ jobs:
 
                 flowChart
                   .data
-                  .datasets[0]
-                  .data =
-                    descriptors
-                    .map(
-                      item =>
-                        item.issues.length
-                    );
+                  .datasets =
+                    [
+                      {
+                        label:
+                          "Assigned to Sprint",
+
+                        data:
+                          descriptors
+                          .map(
+                            item =>
+                              item
+                              .assigned
+                              .length
+                          ),
+
+                        backgroundColor:
+                          "#2499e8",
+
+                        borderWidth:
+                          0
+                      },
+
+                      {
+                        label:
+                          "Not Assigned to Sprint",
+
+                        data:
+                          descriptors
+                          .map(
+                            item =>
+                              item
+                              .unassigned
+                              .length
+                          ),
+
+                        backgroundColor:
+                          "#f58220",
+
+                        borderWidth:
+                          0
+                      }
+                    ];
 
 
                 flowChart.update();
-
               }
 
-
-              // ===========================================
-              // Work by Type
-              // ===========================================
 
               const typeChart =
                 new Chart(
@@ -4273,102 +3454,59 @@ jobs:
                     "typeChart"
                   ),
                   {
-
-                    type:
-                      "doughnut",
+                    type: "doughnut",
 
                     data: {
-
-                      labels:
-                        [],
+                      labels: [],
 
                       datasets: [{
-
-                        data:
-                          [],
-
-                        backgroundColor:
-                          [],
-
-                        borderColor:
-                          "#ffffff",
-
-                        borderWidth:
-                          2,
-
-                        hoverOffset:
-                          8
-
+                        data: [],
+                        backgroundColor: [],
+                        borderColor: "#ffffff",
+                        borderWidth: 2,
+                        hoverOffset: 8
                       }]
-
                     },
 
                     options: {
-
-                      responsive:
-                        true,
-
-                      maintainAspectRatio:
-                        false,
-
-                      cutout:
-                        "58%",
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      cutout: "58%",
 
                       plugins: {
-
                         legend: {
-
-                          position:
-                            "bottom",
+                          position: "bottom",
 
                           labels: {
-
-                            usePointStyle:
-                              true,
-
-                            pointStyle:
-                              "circle",
-
-                            padding:
-                              14
-
+                            usePointStyle: true,
+                            pointStyle: "circle",
+                            padding: 14
                           }
-
                         }
-
                       },
 
                       onClick(
                         event,
                         elements
                       ) {
-
                         if (
                           !elements.length
                         ) {
-
                           return;
-
                         }
-
 
                         const scope =
                           selectedScope();
-
 
                         const type =
                           typeChart
                           .data
                           .labels[
-                            elements[0]
-                            .index
+                            elements[0].index
                           ];
 
-
                         const issues =
-                          workedIssues(
-                            scope
-                          )
+                          workedIssues(scope)
                           .filter(
                             issue =>
                               (
@@ -4380,71 +3518,51 @@ jobs:
                               type
                           );
 
-
                         openDrilldown(
                           type,
                           scope,
                           issues
                         );
-
                       }
-
                     }
-
                   }
                 );
 
 
-              function renderType(
-                scope
-              ) {
+              function renderType(scope) {
+                const counts = {};
 
-                const counts =
-                  {};
+                workedIssues(scope)
+                  .forEach(
+                    issue => {
+                      const type =
+                        (
+                          issue.issueType
+                          ||
+                          "Unspecified"
+                        );
 
-
-                workedIssues(
-                  scope
-                )
-                .forEach(
-                  issue => {
-
-                    const type =
-                      (
-                        issue.issueType
-                        ||
-                        "Unspecified"
-                      );
-
-
-                    counts[type] =
-                      (
-                        counts[type]
-                        ||
-                        0
-                      )
-                      +
-                      1;
-
-                  }
-                );
-
+                      counts[type] =
+                        (
+                          counts[type]
+                          ||
+                          0
+                        )
+                        +
+                        1;
+                    }
+                  );
 
                 const values =
                   Object
-                  .entries(
-                    counts
-                  )
+                  .entries(counts)
                   .sort(
                     (
                       a,
                       b
                     ) =>
-                      b[1]
-                      -
-                      a[1]
+                      b[1] - a[1]
                   );
-
 
                 typeChart
                   .data
@@ -4454,7 +3572,6 @@ jobs:
                         value[0]
                     );
 
-
                 typeChart
                   .data
                   .datasets[0]
@@ -4463,7 +3580,6 @@ jobs:
                       value =>
                         value[1]
                     );
-
 
                 typeChart
                   .data
@@ -4481,25 +3597,15 @@ jobs:
                         ]
                     );
 
-
                 typeChart.update();
-
               }
 
 
-              // ===========================================
-              // Flow by Priority
-              // ===========================================
-
-              function renderPriority(
-                scope
-              ) {
-
+              function renderPriority(scope) {
                 const card =
                   document.getElementById(
                     "priorityCard"
                   );
-
 
                 const priorities =
                   (
@@ -4510,44 +3616,33 @@ jobs:
                   )
                   .filter(Boolean);
 
-
                 if (
                   !priorities.length
                 ) {
-
                   card.classList.add(
                     "hidden"
                   );
 
                   return;
-
                 }
-
 
                 card.classList.remove(
                   "hidden"
                 );
-
 
                 const header =
                   document.getElementById(
                     "priorityHeader"
                   );
 
-
-                header.innerHTML =
-                  "";
-
+                header.innerHTML = "";
 
                 const firstMetric =
-                  isProjectMode(
-                    scope
-                  )
+                  isProjectMode(scope)
                   ?
                   "Total"
                   :
                   "Opened";
-
 
                 [
                   "Priority",
@@ -4557,45 +3652,33 @@ jobs:
                 ]
                 .forEach(
                   heading => {
-
                     const th =
                       document
                       .createElement(
                         "th"
                       );
 
-
                     th.textContent =
                       heading;
 
-
-                    header.appendChild(
-                      th
-                    );
-
+                    header.appendChild(th);
                   }
                 );
-
 
                 const body =
                   document.getElementById(
                     "priorityRows"
                   );
 
-
-                body.innerHTML =
-                  "";
-
+                body.innerHTML = "";
 
                 priorities.forEach(
                   priority => {
-
                     const row =
                       document
                       .createElement(
                         "tr"
                       );
-
 
                     const first =
                       document
@@ -4603,39 +3686,28 @@ jobs:
                         "td"
                       );
 
-
                     first.innerHTML =
                       `<strong>${
-                        escapeHtml(
-                          priority
-                        )
+                        escapeHtml(priority)
                       }</strong>`;
 
-
-                    row.appendChild(
-                      first
-                    );
-
+                    row.appendChild(first);
 
                     function addMetric(
                       issues,
                       label
                     ) {
-
                       const td =
                         document
                         .createElement(
                           "td"
                         );
 
-
                       td.className =
                         "metric-cell";
 
-
                       td.textContent =
                         issues.length;
-
 
                       td.onclick =
                         () =>
@@ -4645,20 +3717,12 @@ jobs:
                             issues
                           );
 
-
-                      row.appendChild(
-                        td
-                      );
-
+                      row.appendChild(td);
                     }
 
-
                     if (
-                      isProjectMode(
-                        scope
-                      )
+                      isProjectMode(scope)
                     ) {
-
                       addMetric(
                         totalIssues(
                           scope,
@@ -4666,9 +3730,7 @@ jobs:
                         ),
                         "Total"
                       );
-
                     } else {
-
                       addMetric(
                         openedIssues(
                           scope,
@@ -4676,15 +3738,12 @@ jobs:
                         ),
                         "Opened"
                       );
-
                     }
-
 
                     projectData
                       .statuses
                       .forEach(
                         status => {
-
                           addMetric(
                             statusIssues(
                               scope,
@@ -4693,10 +3752,8 @@ jobs:
                             ),
                             status
                           );
-
                         }
                       );
-
 
                     addMetric(
                       closedIssues(
@@ -4706,46 +3763,25 @@ jobs:
                       "Closed"
                     );
 
-
-                    body.appendChild(
-                      row
-                    );
-
+                    body.appendChild(row);
                   }
                 );
-
               }
 
 
-              // ===========================================
-              // Quality
-              // ===========================================
-
-              function renderQuality(
-                scope
-              ) {
-
+              function renderQuality(scope) {
                 const container =
                   document.getElementById(
                     "qualityKpis"
                   );
 
-
-                container.innerHTML =
-                  "";
-
+                container.innerHTML = "";
 
                 const opened =
-                  bugsOpened(
-                    scope
-                  );
-
+                  bugsOpened(scope);
 
                 const closed =
-                  bugsClosed(
-                    scope
-                  );
-
+                  bugsClosed(scope);
 
                 addKpi(
                   container,
@@ -4754,14 +3790,12 @@ jobs:
                   opened
                 );
 
-
                 addKpi(
                   container,
                   "Bugs Closed",
                   closed.length,
                   closed
                 );
-
 
                 addKpi(
                   container,
@@ -4782,65 +3816,52 @@ jobs:
                   )
                 );
 
-
                 renderQualityPriority(
                   scope
                 );
-
               }
 
 
               function renderQualityPriority(
                 scope
               ) {
-
                 const card =
                   document.getElementById(
                     "qualityPriorityCard"
                   );
-
 
                 if (
                   !projectData
                   .priorities
                   .length
                 ) {
-
                   card.classList.add(
                     "hidden"
                   );
 
                   return;
-
                 }
-
 
                 card.classList.remove(
                   "hidden"
                 );
-
 
                 const body =
                   document.getElementById(
                     "qualityPriorityRows"
                   );
 
-
-                body.innerHTML =
-                  "";
-
+                body.innerHTML = "";
 
                 projectData
                   .priorities
                   .forEach(
                     priority => {
-
                       const opened =
                         bugsOpened(
                           scope,
                           priority
                         );
-
 
                       const closed =
                         bugsClosed(
@@ -4848,13 +3869,11 @@ jobs:
                           priority
                         );
 
-
                       const row =
                         document
                         .createElement(
                           "tr"
                         );
-
 
                       const first =
                         document
@@ -4862,41 +3881,29 @@ jobs:
                           "td"
                         );
 
-
                       first.innerHTML =
                         `<strong>${
-                          escapeHtml(
-                            priority
-                          )
+                          escapeHtml(priority)
                         }</strong>`;
 
-
-                      row.appendChild(
-                        first
-                      );
-
+                      row.appendChild(first);
 
                       function addCell(
                         value,
                         issues = null
                       ) {
-
                         const td =
                           document
                           .createElement(
                             "td"
                           );
 
-
                         td.textContent =
                           value;
 
-
                         if (issues) {
-
                           td.className =
                             "metric-cell";
-
 
                           td.onclick =
                             () =>
@@ -4905,28 +3912,20 @@ jobs:
                                 scope,
                                 issues
                               );
-
                         }
 
-
-                        row.appendChild(
-                          td
-                        );
-
+                        row.appendChild(td);
                       }
-
 
                       addCell(
                         opened.length,
                         opened
                       );
 
-
                       addCell(
                         closed.length,
                         closed
                       );
-
 
                       addCell(
                         closed.length
@@ -4943,34 +3942,23 @@ jobs:
                         "—"
                       );
 
-
-                      body.appendChild(
-                        row
-                      );
-
+                      body.appendChild(row);
                     }
                   );
-
               }
 
-
-              // ===========================================
-              // Drilldown
-              // ===========================================
 
               function openDrilldown(
                 title,
                 scope,
                 issues
               ) {
-
                 document
                   .getElementById(
                     "drilldownTitle"
                   )
                   .textContent =
                     title;
-
 
                 document
                   .getElementById(
@@ -4983,9 +3971,7 @@ jobs:
                       `${issues.length} issue`
                       +
                       (
-                        issues.length
-                        ===
-                        1
+                        issues.length === 1
                         ?
                         ""
                         :
@@ -4993,12 +3979,9 @@ jobs:
                       )
                     );
 
-
                 const columns = [
-
                   {
-                    label:
-                      "Issue",
+                    label: "Issue",
 
                     render:
                       issue =>
@@ -5006,31 +3989,23 @@ jobs:
                         <a
                           class="issue-link"
                           href="${
-                            escapeHtml(
-                              issue.url
-                            )
+                            escapeHtml(issue.url)
                           }"
                           target="_blank"
-                          rel="noopener noreferrer">
-
+                          rel="noopener noreferrer"
+                        >
                           ${
                             escapeHtml(
                               issue.repository
                             )
-                          }#${
-                            issue.number
-                          }
-
+                          }#${issue.number}
                         </a>
                         `
                   },
 
                   {
-                    label:
-                      "Title",
-
-                    className:
-                      "title-column",
+                    label: "Title",
+                    className: "title-column",
 
                     render:
                       issue =>
@@ -5040,8 +4015,7 @@ jobs:
                   },
 
                   {
-                    label:
-                      "Type",
+                    label: "Type",
 
                     render:
                       issue =>
@@ -5051,8 +4025,7 @@ jobs:
                   },
 
                   {
-                    label:
-                      "Priority",
+                    label: "Priority",
 
                     render:
                       issue =>
@@ -5062,8 +4035,7 @@ jobs:
                   },
 
                   {
-                    label:
-                      "Current Status",
+                    label: "Current Status",
 
                     render:
                       issue =>
@@ -5073,16 +4045,11 @@ jobs:
                           ""
                         )
                   }
-
                 ];
 
-
                 if (cap("size")) {
-
                   columns.push({
-
-                    label:
-                      "Size",
+                    label: "Size",
 
                     render:
                       issue =>
@@ -5091,29 +4058,19 @@ jobs:
                           ||
                           ""
                         )
-
                   });
-
                 }
 
-
                 if (cap("loe")) {
-
                   columns.push({
-
-                    label:
-                      "LOE",
+                    label: "LOE",
 
                     render:
                       issue =>
                         (
-                          issue.loe
-                          ===
-                          null
+                          issue.loe === null
                           ||
-                          issue.loe
-                          ===
-                          undefined
+                          issue.loe === undefined
                           ?
                           ""
                           :
@@ -5121,27 +4078,14 @@ jobs:
                             issue.loe
                           )
                         )
-
                   });
-
                 }
 
-
-                /*
-                 * Sprint-specific history only makes sense
-                 * when a particular sprint is selected.
-                 */
-
                 if (
-                  !isProjectMode(
-                    scope
-                  )
+                  !isProjectMode(scope)
                 ) {
-
                   columns.push({
-
-                    label:
-                      "Sprint Entry",
+                    label: "Sprint Entry",
 
                     render:
                       issue =>
@@ -5151,14 +4095,10 @@ jobs:
                             scope
                           )
                         )
-
                   });
 
-
                   columns.push({
-
-                    label:
-                      "Carried From",
+                    label: "Carried From",
 
                     render:
                       issue =>
@@ -5168,16 +4108,11 @@ jobs:
                             scope
                           )
                         )
-
                   });
-
                 }
 
-
                 columns.push({
-
-                  label:
-                    "Open Date",
+                  label: "Open Date",
 
                   render:
                     issue =>
@@ -5186,19 +4121,14 @@ jobs:
                         ||
                         ""
                       )
-
                 });
-
 
                 projectData
                   .statuses
                   .forEach(
                     status => {
-
                       columns.push({
-
-                        label:
-                          status,
+                        label: status,
 
                         render:
                           issue =>
@@ -5206,23 +4136,14 @@ jobs:
                               issue,
                               status
                             )
-                            .map(
-                              escapeHtml
-                            )
-                            .join(
-                              "<br>"
-                            )
-
+                            .map(escapeHtml)
+                            .join("<br>")
                       });
-
                     }
                   );
 
-
                 columns.push({
-
-                  label:
-                    "Close Date",
+                  label: "Close Date",
 
                   render:
                     issue =>
@@ -5231,127 +4152,87 @@ jobs:
                         ||
                         ""
                       )
-
                 });
-
 
                 const header =
                   document.getElementById(
                     "drilldownHeader"
                   );
 
-
-                header.innerHTML =
-                  "";
-
+                header.innerHTML = "";
 
                 columns.forEach(
                   column => {
-
                     const th =
                       document
                       .createElement(
                         "th"
                       );
 
-
                     th.textContent =
                       column.label;
 
-
-                    header.appendChild(
-                      th
-                    );
-
+                    header.appendChild(th);
                   }
                 );
-
 
                 const body =
                   document.getElementById(
                     "drilldownRows"
                   );
 
-
-                body.innerHTML =
-                  "";
-
+                body.innerHTML = "";
 
                 issues.forEach(
                   issue => {
-
                     const row =
                       document
                       .createElement(
                         "tr"
                       );
 
-
                     columns.forEach(
                       column => {
-
                         const td =
                           document
                           .createElement(
                             "td"
                           );
 
-
                         if (
                           column.className
                         ) {
-
                           td.className =
                             column.className;
-
                         }
 
-
                         td.innerHTML =
-                          column.render(
-                            issue
-                          );
+                          column.render(issue);
 
-
-                        row.appendChild(
-                          td
-                        );
-
+                        row.appendChild(td);
                       }
                     );
 
-
-                    body.appendChild(
-                      row
-                    );
-
+                    body.appendChild(row);
                   }
                 );
-
 
                 document
                   .getElementById(
                     "drilldownBackdrop"
                   )
                   .classList
-                  .remove(
-                    "hidden"
-                  );
-
+                  .remove("hidden");
               }
 
 
               function closeDrilldown() {
-
                 document
                   .getElementById(
                     "drilldownBackdrop"
                   )
                   .classList
-                  .add(
-                    "hidden"
-                  );
-
+                  .add("hidden");
               }
 
 
@@ -5370,17 +4251,13 @@ jobs:
                 .addEventListener(
                   "click",
                   event => {
-
                     if (
                       event.target.id
                       ===
                       "drilldownBackdrop"
                     ) {
-
                       closeDrilldown();
-
                     }
-
                   }
                 );
 
@@ -5389,104 +4266,60 @@ jobs:
                 .addEventListener(
                   "keydown",
                   event => {
-
                     if (
                       event.key
                       ===
                       "Escape"
                     ) {
-
                       closeDrilldown();
-
                     }
-
                   }
                 );
 
 
-              // ===========================================
-              // Main render
-              // ===========================================
-
               function renderAll() {
-
                 const scope =
                   selectedScope();
 
-
                 if (!scope) {
-
                   return;
-
                 }
 
-
-                renderOverview(
-                  scope
-                );
-
-
-                renderQuality(
-                  scope
-                );
-
+                renderOverview(scope);
+                renderQuality(scope);
               }
 
 
-              // ===========================================
-              // Project loading
-              // ===========================================
-
-              function loadProject(
-                project
-              ) {
-
+              function loadProject(project) {
                 fetch(
                   `data/${project.slug}.json?v=${cacheVersion}`,
                   {
-                    cache:
-                      "no-store"
+                    cache: "no-store"
                   }
                 )
-
                 .then(
                   response => {
-
                     if (!response.ok) {
-
                       throw new Error(
                         "Could not load project data."
                       );
-
                     }
 
-
                     return response.json();
-
                   }
                 )
-
                 .then(
                   data => {
-
                     projectData =
                       data;
-
 
                     const sprintSelect =
                       document.getElementById(
                         "sprintSelect"
                       );
 
-
                     sprintSelect.innerHTML =
                       "";
-
-
-                    /*
-                     * Entire Project always exists,
-                     * regardless of Sprint capability.
-                     */
 
                     const projectOption =
                       document
@@ -5494,19 +4327,15 @@ jobs:
                         "option"
                       );
 
-
                     projectOption.value =
                       "project";
-
 
                     projectOption.textContent =
                       "Entire Project";
 
-
                     sprintSelect.appendChild(
                       projectOption
                     );
-
 
                     data.sprints
                       .forEach(
@@ -5514,17 +4343,14 @@ jobs:
                           sprint,
                           index
                         ) => {
-
                           const option =
                             document
                             .createElement(
                               "option"
                             );
 
-
                           option.value =
                             `sprint:${index}`;
-
 
                           option.textContent =
                             (
@@ -5535,111 +4361,69 @@ jobs:
                               `${sprint.end}`
                             );
 
-
                           sprintSelect
-                            .appendChild(
-                              option
-                            );
-
+                            .appendChild(option);
                         }
                       );
 
-
                     const today =
                       localToday();
-
 
                     const currentIndex =
                       data.sprints
                       .findIndex(
                         sprint =>
-                          today
-                          >=
-                          sprint.start
+                          today >= sprint.start
                           &&
-                          today
-                          <=
-                          sprint.end
+                          today <= sprint.end
                       );
 
-
-                    /*
-                     * If an active sprint exists, keep the
-                     * current-sprint default behavior.
-                     *
-                     * Otherwise default to Entire Project.
-                     *
-                     * A project with no Sprint field therefore
-                     * loads successfully in project mode.
-                     */
-
                     if (
-                      currentIndex
-                      >=
-                      0
+                      currentIndex >= 0
                     ) {
-
                       sprintSelect.value =
                         `sprint:${currentIndex}`;
-
                     } else {
-
                       sprintSelect.value =
                         "project";
-
                     }
 
-
                     renderAll();
-
                   }
                 );
-
               }
 
-
-              // ===========================================
-              // Bootstrap
-              // ===========================================
 
               fetch(
                 `data/projects.json?v=${cacheVersion}`,
                 {
-                  cache:
-                    "no-store"
+                  cache: "no-store"
                 }
               )
-
               .then(
                 response =>
                   response.json()
               )
-
               .then(
                 projects => {
-
                   const select =
                     document.getElementById(
                       "projectSelect"
                     );
-
 
                   projects.forEach(
                     (
                       project,
                       index
                     ) => {
-
                       const option =
                         document
                         .createElement(
                           "option"
                         );
 
-
                       option.value =
                         index;
-
 
                       option.textContent =
                         (
@@ -5648,30 +4432,21 @@ jobs:
                           `(${project.issueCount} issues)`
                         );
 
-
-                      select.appendChild(
-                        option
-                      );
-
+                      select.appendChild(option);
                     }
                   );
-
 
                   if (
                     projects.length
                   ) {
-
                     loadProject(
                       projects[0]
                     );
-
                   }
-
 
                   select.addEventListener(
                     "change",
                     event => {
-
                       loadProject(
                         projects[
                           Number(
@@ -5679,10 +4454,8 @@ jobs:
                           )
                         ]
                       );
-
                     }
                   );
-
                 }
               );
 
@@ -5697,155 +4470,59 @@ jobs:
                 );
 
 
-              let resizeTimer =
-                null;
-
+              let resizeTimer = null;
 
               window.addEventListener(
                 "resize",
                 () => {
-
                   clearTimeout(
                     resizeTimer
                   );
 
-
                   resizeTimer =
                     setTimeout(
                       () => {
-
                         flowChart.resize();
                         typeChart.resize();
-
                       },
                       150
                     );
-
                 }
               );
-
             </script>
-
           </body>
-
           </html>
-
           EOF
 
-
-      - name: Verify dashboard and sprint history
+      - name: Verify dashboard
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Checking dashboard..."
+          echo "Checking generated dashboard..."
 
           grep -q "Sprint Analytics" site/index.html
           grep -q "Entire Project" site/index.html
-          grep -q "Total Issues" site/index.html
           grep -q "Opened" site/index.html
           grep -q "Committed" site/index.html
           grep -q "Carried Over" site/index.html
           grep -q "Added Late" site/index.html
           grep -q "Removed" site/index.html
-          grep -q "Flow by Priority" site/index.html
           grep -q "Work by Type" site/index.html
+          grep -q "Flow by Priority" site/index.html
           grep -q "Bugs by Priority" site/index.html
 
-          echo
-          echo "Project capability check:"
+          # New Sprint Flow verification
+          grep -q "Assigned to Sprint" site/index.html
+          grep -q "Not Assigned to Sprint" site/index.html
+          grep -q "#f58220" site/index.html
 
-          python3 <<'PY'
-
-          import glob
-          import json
-
-
-          for filename in glob.glob(
-              "site/data/project-*.json"
-          ):
-
-              with open(
-                  filename
-              ) as handle:
-
-                  data = json.load(
-                      handle
-                  )
-
-
-              print()
-              print(
-                  filename,
-                  "-",
-                  data["project"]["title"],
-              )
-
-
-              print(
-                  "Sprint support:",
-                  data.get(
-                      "capabilities",
-                      {}
-                  )
-                  .get(
-                      "sprint",
-                      {}
-                  )
-                  .get(
-                      "available"
-                  ),
-              )
-
-
-              print(
-                  "Sprints:",
-                  [
-                      sprint["name"]
-                      for sprint in (
-                          data.get(
-                              "sprints",
-                              []
-                          )
-                      )
-                  ],
-              )
-
-
-              print(
-                  "Statuses:",
-                  data.get(
-                      "statuses"
-                  ),
-              )
-
-
-              print(
-                  "Priorities:",
-                  data.get(
-                      "priorities"
-                  ),
-              )
-
-
-              print(
-                  "Issues:",
-                  len(
-                      data.get(
-                          "issues",
-                          []
-                      )
-                  ),
-              )
-
-          PY
-
+          echo "Sprint Analytics dashboard verified."
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./site
-
 
   deploy:
     environment:

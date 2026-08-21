@@ -55,8 +55,9 @@ jobs:
           from pathlib import Path
 
           ORG = os.environ['ORG']
+
           SPRINT_PATTERN = re.compile(
-              '<!--\\s*sprint-tracker:\\s*(.*?)\\s*->\\s*(.*?)\\s*-->',
+              r'<!--\s*sprint-tracker:\s*(.*?)\s*->\s*(.*?)\s*-->',
               re.IGNORECASE
           )
 
@@ -79,11 +80,217 @@ jobs:
 
               return run_json(cmd)
 
-          PROJECTS_QUERY = '\nquery($org: String!) {\n  organization(login: $org) {\n    projectsV2(first: 100) {\n      nodes {\n        number\n        title\n        shortDescription\n        closed\n        url\n      }\n    }\n  }\n}\n'
+          PROJECTS_QUERY = '''
+          query($org: String!) {
+            organization(login: $org) {
+              projectsV2(first: 100) {
+                nodes {
+                  number
+                  title
+                  shortDescription
+                  closed
+                  url
+                }
+              }
+            }
+          }
+          '''
 
-          PROJECT_QUERY = '\nquery(\n  $org: String!,\n  $number: Int!,\n  $cursor: String\n) {\n  organization(login: $org) {\n    projectV2(number: $number) {\n      number\n      title\n      shortDescription\n      url\n\n      fields(first: 100) {\n        nodes {\n          __typename\n\n          ... on ProjectV2Field {\n            name\n            dataType\n          }\n\n          ... on ProjectV2SingleSelectField {\n            name\n            dataType\n\n            options {\n              name\n            }\n          }\n\n          ... on ProjectV2IterationField {\n            name\n            dataType\n\n            configuration {\n              iterations {\n                title\n                startDate\n                duration\n              }\n\n              completedIterations {\n                title\n                startDate\n                duration\n              }\n            }\n          }\n        }\n      }\n\n      items(\n        first: 100,\n        after: $cursor,\n        archivedStates: [\n          ARCHIVED,\n          NOT_ARCHIVED\n        ]\n      ) {\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n\n        nodes {\n          isArchived\n\n          fieldValues(first: 100) {\n            nodes {\n              __typename\n\n              ... on ProjectV2ItemFieldSingleSelectValue {\n                name\n\n                field {\n                  ... on ProjectV2FieldCommon {\n                    name\n                  }\n                }\n              }\n\n              ... on ProjectV2ItemFieldNumberValue {\n                number\n\n                field {\n                  ... on ProjectV2FieldCommon {\n                    name\n                  }\n                }\n              }\n\n              ... on ProjectV2ItemFieldIterationValue {\n                title\n                startDate\n                duration\n\n                field {\n                  ... on ProjectV2FieldCommon {\n                    name\n                  }\n                }\n              }\n\n              ... on ProjectV2ItemFieldDateValue {\n                date\n\n                field {\n                  ... on ProjectV2FieldCommon {\n                    name\n                  }\n                }\n              }\n\n              ... on ProjectV2ItemFieldTextValue {\n                text\n\n                field {\n                  ... on ProjectV2FieldCommon {\n                    name\n                  }\n                }\n              }\n            }\n          }\n\n          content {\n            ... on Issue {\n              number\n              title\n              state\n              createdAt\n              closedAt\n              url\n\n              repository {\n                nameWithOwner\n              }\n\n              issueType {\n                name\n              }\n\n              issueFieldValues(first: 30) {\n                nodes {\n                  ... on IssueFieldSingleSelectValue {\n                    name\n\n                    field {\n                      ... on IssueFieldSingleSelect {\n                        name\n                      }\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n'
+          PROJECT_QUERY = '''
+          query(
+            $org: String!,
+            $number: Int!,
+            $cursor: String
+          ) {
+            organization(login: $org) {
+              projectV2(number: $number) {
+                number
+                title
+                shortDescription
+                url
 
-          STATUS_QUERY = '\nquery(\n  $owner: String!,\n  $repo: String!,\n  $number: Int!\n) {\n  repository(\n    owner: $owner,\n    name: $repo\n  ) {\n    issue(number: $number) {\n      timelineItems(\n        first: 250,\n        itemTypes: [\n          PROJECT_V2_ITEM_STATUS_CHANGED_EVENT\n        ]\n      ) {\n        nodes {\n          ... on ProjectV2ItemStatusChangedEvent {\n            createdAt\n            previousStatus\n            status\n\n            project {\n              number\n            }\n          }\n        }\n      }\n    }\n  }\n}\n'
+                fields(first: 100) {
+                  nodes {
+                    __typename
+
+                    ... on ProjectV2Field {
+                      name
+                      dataType
+                    }
+
+                    ... on ProjectV2SingleSelectField {
+                      name
+                      dataType
+
+                      options {
+                        name
+                      }
+                    }
+
+                    ... on ProjectV2IterationField {
+                      name
+                      dataType
+
+                      configuration {
+                        iterations {
+                          title
+                          startDate
+                          duration
+                        }
+
+                        completedIterations {
+                          title
+                          startDate
+                          duration
+                        }
+                      }
+                    }
+                  }
+                }
+
+                items(
+                  first: 100,
+                  after: $cursor,
+                  archivedStates: [ARCHIVED, NOT_ARCHIVED]
+                ) {
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+
+                  nodes {
+                    isArchived
+
+                    fieldValues(first: 100) {
+                      nodes {
+                        __typename
+
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+
+                        ... on ProjectV2ItemFieldNumberValue {
+                          number
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+
+                        ... on ProjectV2ItemFieldIterationValue {
+                          title
+                          startDate
+                          duration
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+
+                        ... on ProjectV2ItemFieldDateValue {
+                          date
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+
+                        ... on ProjectV2ItemFieldTextValue {
+                          text
+
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    content {
+                      ... on Issue {
+                        number
+                        title
+                        state
+                        createdAt
+                        closedAt
+                        url
+
+                        repository {
+                          nameWithOwner
+                        }
+
+                        issueType {
+                          name
+                        }
+
+                        issueFieldValues(first: 30) {
+                          nodes {
+                            ... on IssueFieldSingleSelectValue {
+                              name
+
+                              field {
+                                ... on IssueFieldSingleSelect {
+                                  name
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
+
+          STATUS_QUERY = '''
+          query(
+            $owner: String!,
+            $repo: String!,
+            $number: Int!
+          ) {
+            repository(
+              owner: $owner,
+              name: $repo
+            ) {
+              issue(number: $number) {
+                timelineItems(
+                  first: 250,
+                  itemTypes: [
+                    PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
+                  ]
+                ) {
+                  nodes {
+                    ... on ProjectV2ItemStatusChangedEvent {
+                      createdAt
+                      previousStatus
+                      status
+
+                      project {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
 
           def normalize(value):
               return re.sub(
@@ -98,8 +305,10 @@ jobs:
               for field in fields:
                   if normalize(field.get('name')) not in aliases:
                       continue
+
                   if data_type and field.get('dataType') != data_type:
                       continue
+
                   return field
 
               return None
@@ -292,9 +501,7 @@ jobs:
                       metadata = {
                           'number': pv2['number'],
                           'title': pv2['title'],
-                          'description': (
-                              pv2.get('shortDescription') or ''
-                          ),
+                          'description': pv2.get('shortDescription') or '',
                           'url': pv2['url']
                       }
 
@@ -375,8 +582,7 @@ jobs:
 
                       iterations = (
                           config.get('completedIterations', [])
-                          +
-                          config.get('iterations', [])
+                          + config.get('iterations', [])
                       )
 
                       for sprint in iterations:
@@ -385,8 +591,7 @@ jobs:
 
                           end = (
                               datetime.fromisoformat(start)
-                              +
-                              timedelta(days=duration - 1)
+                              + timedelta(days=duration - 1)
                           ).date().isoformat()
 
                           sprints[sprint['title']] = {
@@ -479,8 +684,7 @@ jobs:
                       'archived': item.get('isArchived', False),
                       'issueType': (
                           (issue.get('issueType') or {}).get('name')
-                          or
-                          'Unspecified'
+                          or 'Unspecified'
                       ),
                       'priority': priority,
                       'size': size,
@@ -513,11 +717,7 @@ jobs:
                       for event in status_nodes:
                           event_project = event.get('project') or {}
 
-                          if (
-                              event_project.get('number')
-                              !=
-                              project['number']
-                          ):
+                          if event_project.get('number') != project['number']:
                               continue
 
                           status = event.get('status')
@@ -573,8 +773,7 @@ jobs:
 
               all_priorities = (
                   set(project_priority_options)
-                  |
-                  observed_priorities
+                  | observed_priorities
               )
 
               priorities = []
@@ -612,15 +811,13 @@ jobs:
                   'size': {
                       'available': (
                           size_field is not None
-                          or
-                          bool(observed_sizes)
+                          or bool(observed_sizes)
                       )
                   },
                   'loe': {
                       'available': (
                           loe_field is not None
-                          or
-                          any(
+                          or any(
                               issue['loe'] is not None
                               for issue in issues
                           )
@@ -651,57 +848,37 @@ jobs:
               if readable_issue_count == 0:
                   print(
                       f"Skipping Project {project['number']}: "
-                      f"{project['title']} "
-                      f"(no readable issues)"
+                      f"{project['title']} (no readable issues)"
                   )
                   continue
 
               slug = f"project-{project['number']}"
 
-              Path(
-                  f'site/data/{slug}.json'
-              ).write_text(
-                  json.dumps(
-                      data,
-                      indent=2
-                  )
+              Path(f'site/data/{slug}.json').write_text(
+                  json.dumps(data, indent=2)
               )
 
               project_index.append({
                   'number': project['number'],
                   'title': project['title'],
-                  'description': (
-                      project.get('shortDescription') or ''
-                  ),
+                  'description': project.get('shortDescription') or '',
                   'slug': slug,
                   'issueCount': readable_issue_count,
                   'capabilities': data['capabilities']
               })
 
           print(
-              f'Publishing '
-              f'{len(project_index)} '
+              f'Publishing {len(project_index)} '
               f'projects with readable issues'
           )
 
-          Path(
-              'site/data/projects.json'
-          ).write_text(
-              json.dumps(
-                  project_index,
-                  indent=2
-              )
+          Path('site/data/projects.json').write_text(
+              json.dumps(project_index, indent=2)
           )
 
-          Path(
-              'site/data/build.json'
-          ).write_text(
+          Path('site/data/build.json').write_text(
               json.dumps({
-                  'generatedAt': (
-                      datetime.now()
-                      .astimezone()
-                      .isoformat()
-                  )
+                  'generatedAt': datetime.now().astimezone().isoformat()
               })
           )
           PY
@@ -837,10 +1014,7 @@ jobs:
               .kpis {
                 display: grid;
                 grid-template-columns:
-                  repeat(
-                    auto-fit,
-                    minmax(145px, 1fr)
-                  );
+                  repeat(auto-fit, minmax(145px, 1fr));
                 gap: 14px;
                 margin-bottom: 16px;
               }
@@ -851,9 +1025,7 @@ jobs:
                 border: 1px solid var(--border);
                 border-radius: 14px;
                 padding: 18px;
-                box-shadow:
-                  0 3px 10px
-                  rgba(23, 32, 51, .07);
+                box-shadow: 0 3px 10px rgba(23, 32, 51, .07);
               }
 
               .clickable {
@@ -861,9 +1033,7 @@ jobs:
               }
 
               .clickable:hover {
-                box-shadow:
-                  0 8px 22px
-                  rgba(23, 32, 51, .13);
+                box-shadow: 0 8px 22px rgba(23, 32, 51, .13);
               }
 
               .label {
@@ -929,9 +1099,7 @@ jobs:
                 text-align: left;
                 text-transform: none;
                 letter-spacing: normal;
-                box-shadow:
-                  0 6px 18px
-                  rgba(23, 32, 51, .18);
+                box-shadow: 0 6px 18px rgba(23, 32, 51, .18);
                 opacity: 0;
                 visibility: hidden;
                 transform: translate(-50%, 4px);
@@ -1142,8 +1310,7 @@ jobs:
                 }
 
                 .grid-two {
-                  grid-template-columns:
-                    minmax(0, 1fr);
+                  grid-template-columns: minmax(0, 1fr);
                 }
 
                 select {
@@ -1159,10 +1326,7 @@ jobs:
               <div class="page-header">
                 <h1>Sprint Analytics</h1>
 
-                <div
-                  id="lastUpdated"
-                  class="last-updated"
-                >
+                <div id="lastUpdated" class="last-updated">
                   Last updated —
                 </div>
               </div>
@@ -1237,10 +1401,7 @@ jobs:
 
                 <div id="qualityKpis" class="kpis"></div>
 
-                <div
-                  id="qualityPriorityCard"
-                  class="card"
-                >
+                <div id="qualityPriorityCard" class="card">
                   <h3>Bugs by Priority</h3>
 
                   <div
@@ -1351,10 +1512,8 @@ jobs:
               function within(date, sprint) {
                 return Boolean(
                   date
-                  &&
-                  date >= sprint.start
-                  &&
-                  date <= sprint.end
+                  && date >= sprint.start
+                  && date <= sprint.end
                 );
               }
 
@@ -1363,13 +1522,16 @@ jobs:
                 const year = now.getFullYear();
                 const month = String(now.getMonth() + 1).padStart(2, "0");
                 const day = String(now.getDate()).padStart(2, "0");
+
                 return `${year}-${month}-${day}`;
               }
 
               function addDays(dateString, days) {
                 const [year, month, day] = dateString.split("-").map(Number);
                 const date = new Date(Date.UTC(year, month - 1, day));
+
                 date.setUTCDate(date.getUTCDate() + days);
+
                 return date.toISOString().slice(0, 10);
               }
 
@@ -1420,10 +1582,9 @@ jobs:
 
                 return (
                   (Number.isFinite(numeric) ? numeric : 0)
-                  .toFixed(1)
-                  .replace(/\.0$/, "")
-                  +
-                  " days"
+                    .toFixed(1)
+                    .replace(/\.0$/, "")
+                  + " days"
                 );
               }
 
@@ -1433,9 +1594,7 @@ jobs:
                   .sort(
                     (a, b) =>
                       String(a.createdAt || a.date)
-                      .localeCompare(
-                        String(b.createdAt || b.date)
-                      )
+                        .localeCompare(String(b.createdAt || b.date))
                   );
               }
 
@@ -1455,8 +1614,7 @@ jobs:
                 return transitions(issue).filter(
                   event =>
                     event.from === sprint.name
-                    &&
-                    event.to !== sprint.name
+                    && event.to !== sprint.name
                 );
               }
 
@@ -1477,10 +1635,8 @@ jobs:
 
                   return Boolean(
                     entry
-                    &&
-                    isSprint(entry.from)
-                    &&
-                    entry.from !== sprint.name
+                    && isSprint(entry.from)
+                    && entry.from !== sprint.name
                   );
                 });
               }
@@ -1497,8 +1653,7 @@ jobs:
 
                   return Boolean(
                     entry
-                    &&
-                    entry.date > cutoff
+                    && entry.date > cutoff
                   );
                 });
               }
@@ -1514,8 +1669,7 @@ jobs:
                   return exitsFromSprint(issue, sprint).some(
                     exit =>
                       String(exit.createdAt || exit.date)
-                      >
-                      String(entry.createdAt || entry.date)
+                      > String(entry.createdAt || entry.date)
                   );
                 });
               }
@@ -1555,16 +1709,14 @@ jobs:
                   return projectData.issues.filter(
                     issue =>
                       priority === null
-                      ||
-                      issue.priority === priority
+                      || issue.priority === priority
                   );
                 }
 
                 return committedIssues(scope).filter(
                   issue =>
                     priority === null
-                    ||
-                    issue.priority === priority
+                    || issue.priority === priority
                 );
               }
 
@@ -1577,11 +1729,9 @@ jobs:
                   issue =>
                     (
                       priority === null
-                      ||
-                      issue.priority === priority
+                      || issue.priority === priority
                     )
-                    &&
-                    within(issue.opened, scope)
+                    && within(issue.opened, scope)
                 );
               }
 
@@ -1600,11 +1750,9 @@ jobs:
                   issue =>
                     (
                       priority === null
-                      ||
-                      issue.priority === priority
+                      || issue.priority === priority
                     )
-                    &&
-                    within(issue.closed, scope)
+                    && within(issue.closed, scope)
                 );
               }
 
@@ -1628,10 +1776,8 @@ jobs:
 
                   return (
                     closedIssues(scope).length
-                    /
-                    total.length
-                    *
-                    100
+                    / total.length
+                    * 100
                   );
                 }
 
@@ -1643,10 +1789,8 @@ jobs:
 
                 return (
                   completedCommittedIssues(scope).length
-                  /
-                  committed.length
-                  *
-                  100
+                  / committed.length
+                  * 100
                 );
               }
 
@@ -1656,9 +1800,7 @@ jobs:
                   .sort(
                     (a, b) =>
                       String(a.date || "")
-                      .localeCompare(
-                        String(b.date || "")
-                      )
+                        .localeCompare(String(b.date || ""))
                   );
 
                 if (!events.length) {
@@ -1674,46 +1816,38 @@ jobs:
                     issue =>
                       (
                         priority === null
-                        ||
-                        issue.priority === priority
+                        || issue.priority === priority
                       )
-                      &&
-                      issue.currentStatus === status
+                      && issue.currentStatus === status
                   );
                 }
 
                 return projectData.issues.filter(issue => {
                   if (
                     priority !== null
-                    &&
-                    issue.priority !== priority
+                    && issue.priority !== priority
                   ) {
                     return false;
                   }
 
-                  const sprintEvents =
-                    meaningfulStatusEvents(issue)
+                  const sprintEvents = meaningfulStatusEvents(issue)
                     .filter(
-                      event =>
-                        within(event.date, scope)
+                      event => within(event.date, scope)
                     );
 
                   if (sprintEvents.length) {
                     return sprintEvents.some(
-                      event =>
-                        event.status === status
+                      event => event.status === status
                     );
                   }
 
-                  const assignedToSprint =
-                    Boolean(
-                      firstEntry(issue, scope)
-                    );
+                  const assignedToSprint = Boolean(
+                    firstEntry(issue, scope)
+                  );
 
                   return (
                     assignedToSprint
-                    &&
-                    issue.currentStatus === status
+                    && issue.currentStatus === status
                   );
                 });
               }
@@ -1755,8 +1889,7 @@ jobs:
 
               function isBug(issue) {
                 return (
-                  String(issue.issueType || "")
-                  .toLowerCase()
+                  String(issue.issueType || "").toLowerCase()
                   === "bug"
                 );
               }
@@ -1793,22 +1926,20 @@ jobs:
 
                     ${
                       tooltip
-                      ?
-                      `
-                      <span
-                        class="info-wrap"
-                        tabindex="0"
-                        aria-label="${escapeHtml(tooltip)}"
-                      >
-                        <span class="info-icon">?</span>
+                        ? `
+                          <span
+                            class="info-wrap"
+                            tabindex="0"
+                            aria-label="${escapeHtml(tooltip)}"
+                          >
+                            <span class="info-icon">?</span>
 
-                        <span class="info-tooltip">
-                          ${escapeHtml(tooltip)}
-                        </span>
-                      </span>
-                      `
-                      :
-                      ""
+                            <span class="info-tooltip">
+                              ${escapeHtml(tooltip)}
+                            </span>
+                          </span>
+                        `
+                        : ""
                     }
                   </div>
 
@@ -1818,14 +1949,12 @@ jobs:
 
                   ${
                     subtext
-                    ?
-                    `
-                    <div class="subnumber">
-                      ${escapeHtml(subtext)}
-                    </div>
-                    `
-                    :
-                    ""
+                      ? `
+                        <div class="subnumber">
+                          ${escapeHtml(subtext)}
+                        </div>
+                      `
+                      : ""
                   }
                 `;
 
@@ -1842,11 +1971,7 @@ jobs:
               }
 
               function renderOverview(scope) {
-                const container =
-                  document.getElementById(
-                    "overviewKpis"
-                  );
-
+                const container = document.getElementById("overviewKpis");
                 container.innerHTML = "";
 
                 if (isProjectMode(scope)) {
@@ -1974,19 +2099,12 @@ jobs:
               }
 
               function renderStatuses(scope) {
-                const row =
-                  document.getElementById(
-                    "statusRow"
-                  );
-
+                const row = document.getElementById("statusRow");
                 row.innerHTML = "";
 
                 projectData.statuses.forEach(status => {
-                  const issues =
-                    statusIssues(scope, status);
-
-                  const button =
-                    document.createElement("button");
+                  const issues = statusIssues(scope, status);
+                  const button = document.createElement("button");
 
                   button.className = "status-chip";
 
@@ -2065,10 +2183,7 @@ jobs:
                       const element = elements[0];
 
                       const descriptor =
-                        flowChart
-                        ._descriptors[
-                          element.index
-                        ];
+                        flowChart._descriptors[element.index];
 
                       if (!descriptor) {
                         return;
@@ -2086,16 +2201,15 @@ jobs:
 
                       const issues =
                         element.datasetIndex === 0
-                        ? descriptor.assigned
-                        : descriptor.unassigned;
+                          ? descriptor.assigned
+                          : descriptor.unassigned;
 
                       openDrilldown(
                         descriptor.label
-                        +
-                        (
+                        + (
                           element.datasetIndex === 0
-                          ? " · Assigned to Sprint"
-                          : " · Not Assigned to Sprint"
+                            ? " · Assigned to Sprint"
+                            : " · Not Assigned to Sprint"
                         ),
                         selectedScope(),
                         issues
@@ -2106,25 +2220,19 @@ jobs:
               );
 
               function renderFlow(scope) {
-                const title =
-                  document.getElementById(
-                    "flowTitle"
-                  );
-
+                const title = document.getElementById("flowTitle");
                 const description =
-                  document.getElementById(
-                    "flowDescription"
-                  );
+                  document.getElementById("flowDescription");
 
                 title.textContent =
                   isProjectMode(scope)
-                  ? "Project Status"
-                  : "All Sprint Activity";
+                    ? "Project Status"
+                    : "All Sprint Activity";
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "Current status of all issues assigned to the project. Each issue is counted once."
-                  : "All issue activity during the sprint. Counts reflect how many issues were in that status at any point during the sprint.";
+                    ? "Current status of all issues assigned to the project. Each issue is counted once."
+                    : "All issue activity during the sprint. Counts reflect how many issues were in that status at any point during the sprint.";
 
                 if (isProjectMode(scope)) {
                   const descriptors = [
@@ -2136,10 +2244,7 @@ jobs:
                     ...projectData.statuses.map(
                       status => ({
                         label: status,
-                        issues: statusIssues(
-                          scope,
-                          status
-                        )
+                        issues: statusIssues(scope, status)
                       })
                     ),
 
@@ -2149,20 +2254,17 @@ jobs:
                     }
                   ];
 
-                  flowChart._descriptors =
-                    descriptors;
+                  flowChart._descriptors = descriptors;
 
-                  flowChart.data.labels =
-                    descriptors.map(
-                      item => item.label
-                    );
+                  flowChart.data.labels = descriptors.map(
+                    item => item.label
+                  );
 
                   flowChart.data.datasets = [
                     {
                       label: "Issues",
                       data: descriptors.map(
-                        item =>
-                          item.issues.length
+                        item => item.issues.length
                       ),
                       backgroundColor: "#2499e8",
                       borderWidth: 0
@@ -2173,36 +2275,29 @@ jobs:
                   return;
                 }
 
-                const committedIds =
-                  new Set(
-                    committedIssues(scope)
-                    .map(issueId)
-                  );
+                const committedIds = new Set(
+                  committedIssues(scope).map(issueId)
+                );
 
                 function splitIssues(issues) {
                   return {
                     assigned: issues.filter(
                       issue =>
-                        committedIds.has(
-                          issueId(issue)
-                        )
+                        committedIds.has(issueId(issue))
                     ),
 
                     unassigned: issues.filter(
                       issue =>
-                        !committedIds.has(
-                          issueId(issue)
-                        )
+                        !committedIds.has(issueId(issue))
                     )
                   };
                 }
 
                 const descriptors = [];
 
-                const opened =
-                  splitIssues(
-                    openedIssues(scope)
-                  );
+                const opened = splitIssues(
+                  openedIssues(scope)
+                );
 
                 descriptors.push({
                   label: "Opened",
@@ -2211,13 +2306,9 @@ jobs:
                 });
 
                 projectData.statuses.forEach(status => {
-                  const split =
-                    splitIssues(
-                      statusIssues(
-                        scope,
-                        status
-                      )
-                    );
+                  const split = splitIssues(
+                    statusIssues(scope, status)
+                  );
 
                   descriptors.push({
                     label: status,
@@ -2226,10 +2317,9 @@ jobs:
                   });
                 });
 
-                const closed =
-                  splitIssues(
-                    closedIssues(scope)
-                  );
+                const closed = splitIssues(
+                  closedIssues(scope)
+                );
 
                 descriptors.push({
                   label: "Closed",
@@ -2237,42 +2327,32 @@ jobs:
                   unassigned: closed.unassigned
                 });
 
-                flowChart._descriptors =
-                  descriptors;
+                flowChart._descriptors = descriptors;
 
-                flowChart.data.labels =
-                  descriptors.map(
-                    item => item.label
-                  );
+                flowChart.data.labels = descriptors.map(
+                  item => item.label
+                );
 
                 flowChart.data.datasets = [
                   {
-                    label:
-                      "Assigned to Sprint",
+                    label: "Assigned to Sprint",
 
                     data: descriptors.map(
-                      item =>
-                        item.assigned.length
+                      item => item.assigned.length
                     ),
 
-                    backgroundColor:
-                      "#2499e8",
-
+                    backgroundColor: "#2499e8",
                     borderWidth: 0
                   },
 
                   {
-                    label:
-                      "Not Assigned to Sprint",
+                    label: "Not Assigned to Sprint",
 
                     data: descriptors.map(
-                      item =>
-                        item.unassigned.length
+                      item => item.unassigned.length
                     ),
 
-                    backgroundColor:
-                      "#f58220",
-
+                    backgroundColor: "#f58220",
                     borderWidth: 0
                   }
                 ];
@@ -2281,9 +2361,7 @@ jobs:
               }
 
               const typeChart = new Chart(
-                document.getElementById(
-                  "typeChart"
-                ),
+                document.getElementById("typeChart"),
                 {
                   type: "doughnut",
 
@@ -2324,21 +2402,12 @@ jobs:
                       const scope = selectedScope();
 
                       const type =
-                        typeChart
-                        .data
-                        .labels[
-                          elements[0].index
-                        ];
+                        typeChart.data.labels[elements[0].index];
 
-                      const issues =
-                        workedIssues(scope)
+                      const issues = workedIssues(scope)
                         .filter(
                           issue =>
-                            (
-                              issue.issueType
-                              ||
-                              "Unspecified"
-                            )
+                            (issue.issueType || "Unspecified")
                             === type
                         );
 
@@ -2354,22 +2423,18 @@ jobs:
 
               function renderType(scope) {
                 const description =
-                  document.getElementById(
-                    "typeDescription"
-                  );
+                  document.getElementById("typeDescription");
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "All issues by issue type. Each issue is counted once."
-                  : "Issues worked on during the sprint by issue type. Each issue is counted once.";
+                    ? "All issues by issue type. Each issue is counted once."
+                    : "Issues worked on during the sprint by issue type. Each issue is counted once.";
 
                 const counts = {};
 
                 workedIssues(scope).forEach(issue => {
                   const type =
-                    issue.issueType
-                    ||
-                    "Unspecified";
+                    issue.issueType || "Unspecified";
 
                   counts[type] =
                     (counts[type] || 0) + 1;
@@ -2381,57 +2446,40 @@ jobs:
                     (a, b) => b[1] - a[1]
                   );
 
-                typeChart.data.labels =
-                  values.map(
-                    value => value[0]
-                  );
+                typeChart.data.labels = values.map(
+                  value => value[0]
+                );
 
-                typeChart.data.datasets[0].data =
-                  values.map(
-                    value => value[1]
-                  );
+                typeChart.data.datasets[0].data = values.map(
+                  value => value[1]
+                );
 
-                typeChart
-                  .data
-                  .datasets[0]
-                  .backgroundColor =
-                    values.map(
-                      (value, index) =>
-                        TYPE_COLORS[
-                          index
-                          %
-                          TYPE_COLORS.length
-                        ]
-                    );
+                typeChart.data.datasets[0].backgroundColor =
+                  values.map(
+                    (value, index) =>
+                      TYPE_COLORS[
+                        index % TYPE_COLORS.length
+                      ]
+                  );
 
                 typeChart.update();
               }
 
               function renderPriority(scope) {
-                const card =
-                  document.getElementById(
-                    "priorityCard"
-                  );
-
-                const title =
-                  document.getElementById(
-                    "priorityTitle"
-                  );
-
+                const card = document.getElementById("priorityCard");
+                const title = document.getElementById("priorityTitle");
                 const description =
-                  document.getElementById(
-                    "priorityDescription"
-                  );
+                  document.getElementById("priorityDescription");
 
                 title.textContent =
                   isProjectMode(scope)
-                  ? "Status by Priority"
-                  : "Sprint Activity by Priority";
+                    ? "Status by Priority"
+                    : "Sprint Activity by Priority";
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "Current issue statuses by priority. Each issue is counted once."
-                  : "All issue activity by status and priority. Counts reflect how many issues were in that status at any point during the sprint.";
+                    ? "Current issue statuses by priority. Each issue is counted once."
+                    : "All issue activity by status and priority. Counts reflect how many issues were in that status at any point during the sprint.";
 
                 const priorities = (
                   projectData.priorities || []
@@ -2445,16 +2493,14 @@ jobs:
                 card.classList.remove("hidden");
 
                 const header =
-                  document.getElementById(
-                    "priorityHeader"
-                  );
+                  document.getElementById("priorityHeader");
 
                 header.innerHTML = "";
 
                 const firstMetric =
                   isProjectMode(scope)
-                  ? "Total"
-                  : "Opened";
+                    ? "Total"
+                    : "Opened";
 
                 [
                   "Priority",
@@ -2462,44 +2508,31 @@ jobs:
                   ...projectData.statuses,
                   "Closed"
                 ].forEach(heading => {
-                  const th =
-                    document.createElement("th");
+                  const th = document.createElement("th");
 
                   th.textContent = heading;
                   header.appendChild(th);
                 });
 
                 const body =
-                  document.getElementById(
-                    "priorityRows"
-                  );
+                  document.getElementById("priorityRows");
 
                 body.innerHTML = "";
 
                 priorities.forEach(priority => {
-                  const row =
-                    document.createElement("tr");
-
-                  const first =
-                    document.createElement("td");
+                  const row = document.createElement("tr");
+                  const first = document.createElement("td");
 
                   first.innerHTML =
                     `<strong>${escapeHtml(priority)}</strong>`;
 
                   row.appendChild(first);
 
-                  function addMetric(
-                    issues,
-                    label
-                  ) {
-                    const td =
-                      document.createElement("td");
+                  function addMetric(issues, label) {
+                    const td = document.createElement("td");
 
-                    td.className =
-                      "metric-cell";
-
-                    td.textContent =
-                      issues.length;
+                    td.className = "metric-cell";
+                    td.textContent = issues.length;
 
                     td.onclick = () =>
                       openDrilldown(
@@ -2513,18 +2546,12 @@ jobs:
 
                   if (isProjectMode(scope)) {
                     addMetric(
-                      totalIssues(
-                        scope,
-                        priority
-                      ),
+                      totalIssues(scope, priority),
                       "Total"
                     );
                   } else {
                     addMetric(
-                      openedIssues(
-                        scope,
-                        priority
-                      ),
+                      openedIssues(scope, priority),
                       "Opened"
                     );
                   }
@@ -2541,10 +2568,7 @@ jobs:
                   });
 
                   addMetric(
-                    closedIssues(
-                      scope,
-                      priority
-                    ),
+                    closedIssues(scope, priority),
                     "Closed"
                   );
 
@@ -2554,17 +2578,12 @@ jobs:
 
               function renderQuality(scope) {
                 const container =
-                  document.getElementById(
-                    "qualityKpis"
-                  );
+                  document.getElementById("qualityKpis");
 
                 container.innerHTML = "";
 
-                const opened =
-                  bugsOpened(scope);
-
-                const closed =
-                  bugsClosed(scope);
+                const opened = bugsOpened(scope);
+                const closed = bugsClosed(scope);
 
                 addKpi(
                   container,
@@ -2598,16 +2617,12 @@ jobs:
                     "Bug Completion",
                     (
                       opened.length
-                      ?
-                      (
-                        closed.length
-                        /
-                        opened.length
-                        *
-                        100
-                      ).toFixed(0) + "%"
-                      :
-                      "0%"
+                        ? (
+                            closed.length
+                            / opened.length
+                            * 100
+                          ).toFixed(0) + "%"
+                        : "0%"
                     ),
                     null,
                     "",
@@ -2619,14 +2634,11 @@ jobs:
                     "Bug C/R",
                     (
                       closed.length
-                      ?
-                      (
-                        opened.length
-                        /
-                        closed.length
-                      ).toFixed(2) + "x"
-                      :
-                      "—"
+                        ? (
+                            opened.length
+                            / closed.length
+                          ).toFixed(2) + "x"
+                        : "—"
                     ),
                     null,
                     "",
@@ -2639,36 +2651,28 @@ jobs:
 
               function renderQualityPriority(scope) {
                 document
-                  .getElementById(
-                    "qualityOpenedHeader"
-                  )
+                  .getElementById("qualityOpenedHeader")
                   .textContent =
                     isProjectMode(scope)
-                    ? "Total Bugs"
-                    : "Bugs Opened";
+                      ? "Total Bugs"
+                      : "Bugs Opened";
 
                 document
-                  .getElementById(
-                    "qualityClosedHeader"
-                  )
+                  .getElementById("qualityClosedHeader")
                   .textContent =
                     isProjectMode(scope)
-                    ? "Closed Bugs"
-                    : "Bugs Closed";
+                      ? "Closed Bugs"
+                      : "Bugs Closed";
 
                 document
-                  .getElementById(
-                    "qualityRatioHeader"
-                  )
+                  .getElementById("qualityRatioHeader")
                   .textContent =
                     isProjectMode(scope)
-                    ? "% Closed"
-                    : "C/R";
+                      ? "% Closed"
+                      : "C/R";
 
                 const card =
-                  document.getElementById(
-                    "qualityPriorityCard"
-                  );
+                  document.getElementById("qualityPriorityCard");
 
                 if (!projectData.priorities.length) {
                   card.classList.add("hidden");
@@ -2678,57 +2682,43 @@ jobs:
                 card.classList.remove("hidden");
 
                 document
-                  .getElementById(
-                    "qualityPriorityDescription"
-                  )
+                  .getElementById("qualityPriorityDescription")
                   .textContent =
                     isProjectMode(scope)
-                    ? "All bugs created and closed, by priority."
-                    : "All bugs created and closed during the sprint, by priority.";
+                      ? "All bugs created and closed, by priority."
+                      : "All bugs created and closed during the sprint, by priority.";
 
                 const body =
-                  document.getElementById(
-                    "qualityPriorityRows"
-                  );
+                  document.getElementById("qualityPriorityRows");
 
                 body.innerHTML = "";
 
                 projectData.priorities.forEach(priority => {
-                  const opened =
-                    bugsOpened(
-                      scope,
-                      priority
-                    );
+                  const opened = bugsOpened(
+                    scope,
+                    priority
+                  );
 
-                  const closed =
-                    bugsClosed(
-                      scope,
-                      priority
-                    );
+                  const closed = bugsClosed(
+                    scope,
+                    priority
+                  );
 
-                  const row =
-                    document.createElement("tr");
-
-                  const first =
-                    document.createElement("td");
+                  const row = document.createElement("tr");
+                  const first = document.createElement("td");
 
                   first.innerHTML =
                     `<strong>${escapeHtml(priority)}</strong>`;
 
                   row.appendChild(first);
 
-                  function addCell(
-                    value,
-                    issues = null
-                  ) {
-                    const td =
-                      document.createElement("td");
+                  function addCell(value, issues = null) {
+                    const td = document.createElement("td");
 
                     td.textContent = value;
 
                     if (issues) {
-                      td.className =
-                        "metric-cell";
+                      td.className = "metric-cell";
 
                       td.onclick = () =>
                         openDrilldown(
@@ -2753,32 +2743,23 @@ jobs:
 
                   addCell(
                     isProjectMode(scope)
-                    ?
-                    (
-                      opened.length
-                      ?
-                      (
-                        closed.length
-                        /
-                        opened.length
-                        *
-                        100
-                      ).toFixed(0) + "%"
-                      :
-                      "0%"
-                    )
-                    :
-                    (
-                      closed.length
-                      ?
-                      (
-                        opened.length
-                        /
-                        closed.length
-                      ).toFixed(2) + "x"
-                      :
-                      "—"
-                    )
+                      ? (
+                          opened.length
+                            ? (
+                                closed.length
+                                / opened.length
+                                * 100
+                              ).toFixed(0) + "%"
+                            : "0%"
+                        )
+                      : (
+                          closed.length
+                            ? (
+                                opened.length
+                                / closed.length
+                              ).toFixed(2) + "x"
+                            : "—"
+                        )
                   );
 
                   body.appendChild(row);
@@ -2791,25 +2772,18 @@ jobs:
                 issues
               ) {
                 document
-                  .getElementById(
-                    "drilldownTitle"
-                  )
-                  .textContent =
-                    title;
+                  .getElementById("drilldownTitle")
+                  .textContent = title;
 
                 document
-                  .getElementById(
-                    "drilldownSubtitle"
-                  )
+                  .getElementById("drilldownSubtitle")
                   .textContent =
                     `${scope.name} · `
-                    +
-                    `${issues.length} issue`
-                    +
-                    (
+                    + `${issues.length} issue`
+                    + (
                       issues.length === 1
-                      ? ""
-                      : "s"
+                        ? ""
+                        : "s"
                     );
 
                 const columns = [
@@ -2840,18 +2814,14 @@ jobs:
                     label: "Type",
 
                     render: issue =>
-                      escapeHtml(
-                        issue.issueType
-                      )
+                      escapeHtml(issue.issueType)
                   },
 
                   {
                     label: "Priority",
 
                     render: issue =>
-                      escapeHtml(
-                        issue.priority
-                      )
+                      escapeHtml(issue.priority)
                   },
 
                   {
@@ -2859,9 +2829,7 @@ jobs:
 
                     render: issue =>
                       escapeHtml(
-                        issue.currentStatus
-                        ||
-                        ""
+                        issue.currentStatus || ""
                       )
                   }
                 ];
@@ -2871,9 +2839,7 @@ jobs:
                     label: "Size",
 
                     render: issue =>
-                      escapeHtml(
-                        issue.size || ""
-                      )
+                      escapeHtml(issue.size || "")
                   });
                 }
 
@@ -2884,11 +2850,10 @@ jobs:
                     render: issue =>
                       (
                         issue.loe === null
-                        ||
-                        issue.loe === undefined
+                        || issue.loe === undefined
                       )
-                      ? ""
-                      : formatDays(issue.loe)
+                        ? ""
+                        : formatDays(issue.loe)
                   });
                 }
 
@@ -2898,10 +2863,7 @@ jobs:
 
                     render: issue =>
                       escapeHtml(
-                        sprintEntryLabel(
-                          issue,
-                          scope
-                        )
+                        sprintEntryLabel(issue, scope)
                       )
                   });
 
@@ -2910,10 +2872,7 @@ jobs:
 
                     render: issue =>
                       escapeHtml(
-                        carriedFrom(
-                          issue,
-                          scope
-                        )
+                        carriedFrom(issue, scope)
                       )
                   });
                 }
@@ -2922,9 +2881,7 @@ jobs:
                   label: "Open Date",
 
                   render: issue =>
-                    escapeHtml(
-                      issue.opened || ""
-                    )
+                    escapeHtml(issue.opened || "")
                 });
 
                 projectData.statuses.forEach(status => {
@@ -2932,12 +2889,9 @@ jobs:
                     label: status,
 
                     render: issue =>
-                      statusDates(
-                        issue,
-                        status
-                      )
-                      .map(escapeHtml)
-                      .join("<br>")
+                      statusDates(issue, status)
+                        .map(escapeHtml)
+                        .join("<br>")
                   });
                 });
 
@@ -2945,50 +2899,37 @@ jobs:
                   label: "Close Date",
 
                   render: issue =>
-                    escapeHtml(
-                      issue.closed || ""
-                    )
+                    escapeHtml(issue.closed || "")
                 });
 
                 const header =
-                  document.getElementById(
-                    "drilldownHeader"
-                  );
+                  document.getElementById("drilldownHeader");
 
                 header.innerHTML = "";
 
                 columns.forEach(column => {
-                  const th =
-                    document.createElement("th");
+                  const th = document.createElement("th");
 
-                  th.textContent =
-                    column.label;
-
+                  th.textContent = column.label;
                   header.appendChild(th);
                 });
 
                 const body =
-                  document.getElementById(
-                    "drilldownRows"
-                  );
+                  document.getElementById("drilldownRows");
 
                 body.innerHTML = "";
 
                 issues.forEach(issue => {
-                  const row =
-                    document.createElement("tr");
+                  const row = document.createElement("tr");
 
                   columns.forEach(column => {
-                    const td =
-                      document.createElement("td");
+                    const td = document.createElement("td");
 
                     if (column.className) {
-                      td.className =
-                        column.className;
+                      td.className = column.className;
                     }
 
-                    td.innerHTML =
-                      column.render(issue);
+                    td.innerHTML = column.render(issue);
 
                     row.appendChild(td);
                   });
@@ -2997,40 +2938,30 @@ jobs:
                 });
 
                 document
-                  .getElementById(
-                    "drilldownBackdrop"
-                  )
+                  .getElementById("drilldownBackdrop")
                   .classList
                   .remove("hidden");
               }
 
               function closeDrilldown() {
                 document
-                  .getElementById(
-                    "drilldownBackdrop"
-                  )
+                  .getElementById("drilldownBackdrop")
                   .classList
                   .add("hidden");
               }
 
               document
-                .getElementById(
-                  "closeDrilldown"
-                )
-                .onclick =
-                  closeDrilldown;
+                .getElementById("closeDrilldown")
+                .onclick = closeDrilldown;
 
               document
-                .getElementById(
-                  "drilldownBackdrop"
-                )
+                .getElementById("drilldownBackdrop")
                 .addEventListener(
                   "click",
                   event => {
                     if (
                       event.target.id
-                      ===
-                      "drilldownBackdrop"
+                      === "drilldownBackdrop"
                     ) {
                       closeDrilldown();
                     }
@@ -3077,47 +3008,31 @@ jobs:
                   projectData = data;
 
                   const sprintSelect =
-                    document.getElementById(
-                      "sprintSelect"
-                    );
+                    document.getElementById("sprintSelect");
 
                   sprintSelect.innerHTML = "";
 
                   const projectOption =
-                    document.createElement(
-                      "option"
-                    );
+                    document.createElement("option");
 
-                  projectOption.value =
-                    "project";
+                  projectOption.value = "project";
+                  projectOption.textContent = "Entire Project";
 
-                  projectOption.textContent =
-                    "Entire Project";
-
-                  sprintSelect.appendChild(
-                    projectOption
-                  );
+                  sprintSelect.appendChild(projectOption);
 
                   data.sprints.forEach(
                     (sprint, index) => {
                       const option =
-                        document.createElement(
-                          "option"
-                        );
+                        document.createElement("option");
 
-                      option.value =
-                        `sprint:${index}`;
+                      option.value = `sprint:${index}`;
 
                       option.textContent =
                         `${sprint.name} · `
-                        +
-                        `${sprint.start} – `
-                        +
-                        `${sprint.end}`;
+                        + `${sprint.start} – `
+                        + `${sprint.end}`;
 
-                      sprintSelect.appendChild(
-                        option
-                      );
+                      sprintSelect.appendChild(option);
                     }
                   );
 
@@ -3127,14 +3042,13 @@ jobs:
                     data.sprints.findIndex(
                       sprint =>
                         today >= sprint.start
-                        &&
-                        today <= sprint.end
+                        && today <= sprint.end
                     );
 
                   sprintSelect.value =
                     currentIndex >= 0
-                    ? `sprint:${currentIndex}`
-                    : "project";
+                      ? `sprint:${currentIndex}`
+                      : "project";
 
                   renderAll();
                 });
@@ -3150,33 +3064,26 @@ jobs:
                 response => response.json()
               )
               .then(build => {
-                const date =
-                  new Date(
-                    build.generatedAt
-                  );
+                const date = new Date(
+                  build.generatedAt
+                );
 
                 document
-                  .getElementById(
-                    "lastUpdated"
-                  )
+                  .getElementById("lastUpdated")
                   .textContent =
                     "Last updated "
-                    +
-                    date.toLocaleString(
-                      undefined,
-                      {
-                        dateStyle: "medium",
-                        timeStyle: "short"
-                      }
-                    );
+                    + date.toLocaleString(
+                        undefined,
+                        {
+                          dateStyle: "medium",
+                          timeStyle: "short"
+                        }
+                      );
               })
               .catch(() => {
                 document
-                  .getElementById(
-                    "lastUpdated"
-                  )
-                  .textContent =
-                    "Last updated —";
+                  .getElementById("lastUpdated")
+                  .textContent = "Last updated —";
               });
 
               fetch(
@@ -3190,23 +3097,18 @@ jobs:
               )
               .then(projects => {
                 const select =
-                  document.getElementById(
-                    "projectSelect"
-                  );
+                  document.getElementById("projectSelect");
 
                 projects.forEach(
                   (project, index) => {
                     const option =
-                      document.createElement(
-                        "option"
-                      );
+                      document.createElement("option");
 
                     option.value = index;
 
                     option.textContent =
                       `${project.title} `
-                      +
-                      `(${project.issueCount} issues)`;
+                      + `(${project.issueCount} issues)`;
 
                     select.appendChild(option);
                   }
@@ -3221,9 +3123,7 @@ jobs:
                   event => {
                     loadProject(
                       projects[
-                        Number(
-                          event.target.value
-                        )
+                        Number(event.target.value)
                       ]
                     );
                   }
@@ -3231,9 +3131,7 @@ jobs:
               });
 
               document
-                .getElementById(
-                  "sprintSelect"
-                )
+                .getElementById("sprintSelect")
                 .addEventListener(
                   "change",
                   renderAll
@@ -3244,9 +3142,7 @@ jobs:
               window.addEventListener(
                 "resize",
                 () => {
-                  clearTimeout(
-                    resizeTimer
-                  );
+                  clearTimeout(resizeTimer);
 
                   resizeTimer = setTimeout(
                     () => {

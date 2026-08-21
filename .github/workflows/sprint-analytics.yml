@@ -728,6 +728,7 @@ jobs:
 
                           issue['statusEvents'].append({
                               'status': status,
+                              'previousStatus': event.get('previousStatus'),
                               'date': created_at[:10]
                           })
 
@@ -1802,7 +1803,66 @@ jobs:
                       String(a.date || "")
                         .localeCompare(String(b.date || ""))
                   );
-
+                  
+              function sprintStatuses(issue, sprint) {
+                const entry = firstEntry(issue, sprint);
+              
+                if (!entry) {
+                  return null;
+                }
+              
+                const entryDate =
+                  entry.date < sprint.start
+                    ? sprint.start
+                    : entry.date;
+              
+                const events = (issue.statusEvents || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.date || "")
+                        .localeCompare(String(b.date || ""))
+                  );
+              
+                const statuses = new Set();
+              
+                // Find the issue's status when it entered the sprint.
+                const eventBeforeEntry = events
+                  .filter(event => event.date <= entryDate)
+                  .at(-1);
+              
+                if (eventBeforeEntry?.status) {
+                  statuses.add(eventBeforeEntry.status);
+                } else {
+                  // If there is no earlier status event, the first later
+                  // transition tells us which status it was coming from.
+                  const firstLaterEvent = events.find(
+                    event =>
+                      event.date >= entryDate
+                      && event.previousStatus
+                  );
+              
+                  if (firstLaterEvent?.previousStatus) {
+                    statuses.add(firstLaterEvent.previousStatus);
+                  } else if (issue.currentStatus) {
+                    // Fallback for an issue that never changed status.
+                    statuses.add(issue.currentStatus);
+                  }
+                }
+              
+                // Keep every status the issue reaches while it is in the sprint.
+                events.forEach(event => {
+                  if (
+                    event.date >= entryDate
+                    && event.date <= sprint.end
+                    && event.status
+                  ) {
+                    statuses.add(event.status);
+                  }
+                });
+              
+                return statuses;
+              }
                 if (!events.length) {
                   return [];
                 }
@@ -1821,7 +1881,41 @@ jobs:
                       && issue.currentStatus === status
                   );
                 }
-
+              
+                return projectData.issues.filter(issue => {
+                  if (
+                    priority !== null
+                    && issue.priority !== priority
+                  ) {
+                    return false;
+                  }
+              
+                  const assignedStatuses =
+                    sprintStatuses(issue, scope);
+              
+                  /*
+                   * Assigned sprint work is historical:
+                   * include the status it started in plus every
+                   * status it reached while assigned to the sprint.
+                   */
+                  if (assignedStatuses) {
+                    return assignedStatuses.has(status);
+                  }
+              
+                  /*
+                   * Work not assigned to the sprint keeps the
+                   * existing behavior: only actual status activity
+                   * that occurred during the sprint is counted.
+                   */
+                  return meaningfulStatusEvents(issue)
+                    .filter(
+                      event => within(event.date, scope)
+                    )
+                    .some(
+                      event => event.status === status
+                    );
+                });
+              }
                 return projectData.issues.filter(issue => {
                   if (
                     priority !== null

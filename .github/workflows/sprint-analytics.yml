@@ -2103,7 +2103,7 @@ jobs:
                     total.length,
                     total,
                     "",
-                    "All issues currently in the project, including open and closed issues."
+                    "All issues assigned to the project."
                   );
 
                   addKpi(
@@ -2112,7 +2112,7 @@ jobs:
                     open.length,
                     open,
                     "",
-                    "Project issues that are currently open."
+                    "Issues that are currently open."
                   );
 
                   addKpi(
@@ -2121,7 +2121,7 @@ jobs:
                     closed.length,
                     closed,
                     "",
-                    "Project issues that are currently closed."
+                    "Issues that are currently closed."
                   );
 
                   addKpi(
@@ -2135,7 +2135,7 @@ jobs:
                     ),
                     null,
                     "",
-                    "Closed project issues divided by all project issues."
+                    "Percentage of issues that have been closed, of all issues assigned to the project."
                   );
                 } else {
                   const opened =
@@ -2162,7 +2162,7 @@ jobs:
                     opened.length,
                     opened,
                     "",
-                    "All new issues created during the sprint, whether or not they were assigned to it."
+                    "All new issues created during the sprint."
                   );
 
                   addKpi(
@@ -2213,7 +2213,7 @@ jobs:
                     closed.length,
                     closed,
                     "",
-                    "All issues closed during the sprint, whether or not they were assigned to it."
+                    "All issues closed during the sprint."
                   );
 
                   addKpi(
@@ -2227,7 +2227,7 @@ jobs:
                     ),
                     null,
                     "",
-                    "Committed issues closed divided by total committed issues. Closed issues that were not assigned to the sprint do not contribute to this metric."
+                    "Percentage of committed issues that were closed during the sprint. Closed issues that were not assigned to the sprint do not contribute to this metric."
                   );
                 }
 
@@ -2405,13 +2405,13 @@ jobs:
 
                 title.textContent =
                   isProjectMode(scope)
-                  ? "Current Project Status"
+                  ? "Project Status"
                   : "All Sprint Activity";
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "All issues by current status. Each issue is counted once."
-                  : "All issue activity during the sprint. Status counts reflect how many issues were in that status at any point during the sprint.";
+                  ? "Current status of all issues assigned to the project. Each issue is counted once."
+                  : "All issue activity during the sprint. Counts reflect how many issues were in that status at any point during the sprint.";
 
                 if (isProjectMode(scope)) {
                   const descriptors = [
@@ -2654,8 +2654,8 @@ jobs:
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "All project issues by issue type. Each issue is counted once."
-                  : "Issues worked on during the sprint by issue type, including work not assigned to the sprint. Each issue is counted once.";
+                  ? "All issues by issue type. Each issue is counted once."
+                  : "Issues worked on during the sprint by issue type. Each issue is counted once.";
 
                 const counts = {};
 
@@ -2729,8 +2729,8 @@ jobs:
 
                 description.textContent =
                   isProjectMode(scope)
-                  ? "All project issues by current status and priority. Each issue is counted once."
-                  : "Issues that reached each status during the sprint, broken down by priority. An issue can count in multiple statuses.";
+                  ? "Current issue statuses by priority. Each issue is counted once."
+                  : "All issue activity by status and priority. Counts reflect how many issues were in that status at any point during the sprint.";
 
                 const priorities = (
                   projectData.priorities || []
@@ -2893,8 +2893,8 @@ jobs:
                   opened,
                   "",
                   isProjectMode(scope)
-                    ? "All bug issues currently in the project."
-                    : "Bugs created during the sprint, whether or not they were assigned to it."
+                    ? "All open bugs."
+                    : "All bugs opened during the sprint."
                 );
 
                 addKpi(
@@ -2906,8 +2906,8 @@ jobs:
                   closed,
                   "",
                   isProjectMode(scope)
-                    ? "Bug issues in the project that are currently closed."
-                    : "Bugs closed during the sprint, whether or not they were assigned to it."
+                    ? "All closed bugs."
+                    : "All bugs closed during the sprint."
                 );
 
                 if (isProjectMode(scope)) {
@@ -2929,7 +2929,7 @@ jobs:
                     ),
                     null,
                     "",
-                    "Closed bugs divided by all bugs currently in the project."
+                    "Ratio of open bugs to closed bugs. Above 1.0 means the bug backlog is growing."
                   );
                 } else {
                   addKpi(
@@ -2948,7 +2948,7 @@ jobs:
                     ),
                     null,
                     "",
-                    "Bugs created divided by bugs closed during the sprint. Above 1.0 means more bugs were created than closed."
+                    "Ratio of new bugs opened to bugs closed during the sprint. Above 1.0 means more bugs were created than closed."
                   );
                 }
 
@@ -3012,8 +3012,8 @@ jobs:
                   )
                   .textContent =
                     isProjectMode(scope)
-                    ? "All project bugs by priority and current state."
-                    : "Bugs created and closed during the sprint by priority, whether or not they were assigned to it.";
+                    ? "All bugs created and closed, by priority."
+                    : "All bugs created and closed during the sprint, by priority.";
 
                 const body =
                   document.getElementById(
@@ -3630,7 +3630,7 @@ jobs:
             "Work by Type" \
             "All Sprint Activity" \
             "Sprint Activity by Priority" \
-            "Current Project Status" \
+            "Project Status" \
             "Status by Priority" \
             "Bugs by Priority" \
             "Assigned to Sprint" \

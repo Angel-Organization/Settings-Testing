@@ -1812,17 +1812,10 @@ jobs:
               }
 
               function sprintStatuses(issue, sprint) {
-                const entry = firstEntry(issue, sprint);
-
-                if (!entry) {
+                if (!firstEntry(issue, sprint)) {
                   return null;
                 }
-
-                const entryDate =
-                  entry.date < sprint.start
-                    ? sprint.start
-                    : entry.date;
-
+              
                 const events = (issue.statusEvents || [])
                   .slice()
                   .sort(
@@ -1830,42 +1823,47 @@ jobs:
                       String(a.date || "")
                         .localeCompare(String(b.date || ""))
                   );
-
+              
                 const statuses = new Set();
-
-                const eventBeforeEntry = events
-                  .filter(event => event.date <= entryDate)
+              
+                // Determine which status the issue was already in
+                // when the sprint started.
+                const lastEventBeforeSprint = events
+                  .filter(event => event.date < sprint.start)
                   .at(-1);
-
-                if (eventBeforeEntry?.status) {
-                  statuses.add(eventBeforeEntry.status);
+              
+                if (lastEventBeforeSprint?.status) {
+                  statuses.add(lastEventBeforeSprint.status);
                 } else {
-                  const firstLaterEvent = events.find(
+                  // If there is no earlier status event, use the previous
+                  // status from the first transition during/after the sprint.
+                  const firstRelevantEvent = events.find(
                     event =>
-                      event.date >= entryDate
+                      event.date >= sprint.start
                       && event.previousStatus
                   );
-
-                  if (firstLaterEvent?.previousStatus) {
-                    statuses.add(firstLaterEvent.previousStatus);
+              
+                  if (firstRelevantEvent?.previousStatus) {
+                    statuses.add(firstRelevantEvent.previousStatus);
                   } else if (issue.currentStatus) {
                     statuses.add(issue.currentStatus);
                   }
                 }
-
+              
+                // Include every status the issue reached during the sprint,
+                // even if the issue was not added to the sprint until later.
                 events.forEach(event => {
                   if (
-                    event.date >= entryDate
+                    event.date >= sprint.start
                     && event.date <= sprint.end
                     && event.status
                   ) {
                     statuses.add(event.status);
                   }
                 });
-
+              
                 return statuses;
               }
-
               function statusIssues(scope, status, priority = null) {
                 if (isProjectMode(scope)) {
                   return projectData.issues.filter(

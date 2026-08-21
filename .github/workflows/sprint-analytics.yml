@@ -1803,19 +1803,26 @@ jobs:
                       String(a.date || "")
                         .localeCompare(String(b.date || ""))
                   );
-                  
+
+                if (!events.length) {
+                  return [];
+                }
+
+                return events.slice(1);
+              }
+
               function sprintStatuses(issue, sprint) {
                 const entry = firstEntry(issue, sprint);
-              
+
                 if (!entry) {
                   return null;
                 }
-              
+
                 const entryDate =
                   entry.date < sprint.start
                     ? sprint.start
                     : entry.date;
-              
+
                 const events = (issue.statusEvents || [])
                   .slice()
                   .sort(
@@ -1823,14 +1830,14 @@ jobs:
                       String(a.date || "")
                         .localeCompare(String(b.date || ""))
                   );
-              
+
                 const statuses = new Set();
-              
-                // Find the issue's status when it entered the sprint.
+
+                // Find the status the issue was in when it entered the sprint.
                 const eventBeforeEntry = events
                   .filter(event => event.date <= entryDate)
                   .at(-1);
-              
+
                 if (eventBeforeEntry?.status) {
                   statuses.add(eventBeforeEntry.status);
                 } else {
@@ -1841,7 +1848,7 @@ jobs:
                       event.date >= entryDate
                       && event.previousStatus
                   );
-              
+
                   if (firstLaterEvent?.previousStatus) {
                     statuses.add(firstLaterEvent.previousStatus);
                   } else if (issue.currentStatus) {
@@ -1849,8 +1856,8 @@ jobs:
                     statuses.add(issue.currentStatus);
                   }
                 }
-              
-                // Keep every status the issue reaches while it is in the sprint.
+
+                // Keep every status reached after entering the sprint.
                 events.forEach(event => {
                   if (
                     event.date >= entryDate
@@ -1860,14 +1867,8 @@ jobs:
                     statuses.add(event.status);
                   }
                 });
-              
-                return statuses;
-              }
-                if (!events.length) {
-                  return [];
-                }
 
-                return events.slice(1);
+                return statuses;
               }
 
               function statusIssues(scope, status, priority = null) {
@@ -1881,7 +1882,7 @@ jobs:
                       && issue.currentStatus === status
                   );
                 }
-              
+
                 return projectData.issues.filter(issue => {
                   if (
                     priority !== null
@@ -1889,60 +1890,20 @@ jobs:
                   ) {
                     return false;
                   }
-              
-                  const assignedStatuses =
-                    sprintStatuses(issue, scope);
-              
-                  /*
-                   * Assigned sprint work is historical:
-                   * include the status it started in plus every
-                   * status it reached while assigned to the sprint.
-                   */
+
+                  const assignedStatuses = sprintStatuses(issue, scope);
+
+                  // Sprint-assigned issues retain every status they occupied
+                  // while part of the sprint.
                   if (assignedStatuses) {
                     return assignedStatuses.has(status);
                   }
-              
-                  /*
-                   * Work not assigned to the sprint keeps the
-                   * existing behavior: only actual status activity
-                   * that occurred during the sprint is counted.
-                   */
+
+                  // Issues never assigned to the sprint only count actual
+                  // status activity that occurred during the sprint.
                   return meaningfulStatusEvents(issue)
-                    .filter(
-                      event => within(event.date, scope)
-                    )
-                    .some(
-                      event => event.status === status
-                    );
-                });
-              }
-                return projectData.issues.filter(issue => {
-                  if (
-                    priority !== null
-                    && issue.priority !== priority
-                  ) {
-                    return false;
-                  }
-
-                  const sprintEvents = meaningfulStatusEvents(issue)
-                    .filter(
-                      event => within(event.date, scope)
-                    );
-
-                  if (sprintEvents.length) {
-                    return sprintEvents.some(
-                      event => event.status === status
-                    );
-                  }
-
-                  const assignedToSprint = Boolean(
-                    firstEntry(issue, scope)
-                  );
-
-                  return (
-                    assignedToSprint
-                    && issue.currentStatus === status
-                  );
+                    .filter(event => within(event.date, scope))
+                    .some(event => event.status === status);
                 });
               }
 

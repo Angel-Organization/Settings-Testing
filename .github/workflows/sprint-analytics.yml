@@ -1310,7 +1310,6 @@ jobs:
 
             <script>
               let projectData = null;
-
               const cacheVersion = Date.now();
 
               const TYPE_COLORS = [
@@ -1338,13 +1337,7 @@ jobs:
               }
 
               function cap(name) {
-                return (
-                  projectData
-                  ?.capabilities
-                  ?.[name]
-                  ?.available
-                  === true
-                );
+                return projectData?.capabilities?.[name]?.available === true;
               }
 
               function issueId(issue) {
@@ -1352,11 +1345,7 @@ jobs:
               }
 
               function isClosed(issue) {
-                return (
-                  String(issue.state || "")
-                  .toUpperCase()
-                  === "CLOSED"
-                );
+                return String(issue.state || "").toUpperCase() === "CLOSED";
               }
 
               function within(date, sprint) {
@@ -1372,42 +1361,16 @@ jobs:
               function localToday() {
                 const now = new Date();
                 const year = now.getFullYear();
-
-                const month = String(
-                  now.getMonth() + 1
-                ).padStart(2, "0");
-
-                const day = String(
-                  now.getDate()
-                ).padStart(2, "0");
-
+                const month = String(now.getMonth() + 1).padStart(2, "0");
+                const day = String(now.getDate()).padStart(2, "0");
                 return `${year}-${month}-${day}`;
               }
 
               function addDays(dateString, days) {
-                const [year, month, day] = (
-                  dateString
-                  .split("-")
-                  .map(Number)
-                );
-
-                const date = new Date(
-                  Date.UTC(
-                    year,
-                    month - 1,
-                    day
-                  )
-                );
-
-                date.setUTCDate(
-                  date.getUTCDate() + days
-                );
-
-                return (
-                  date
-                  .toISOString()
-                  .slice(0, 10)
-                );
+                const [year, month, day] = dateString.split("-").map(Number);
+                const date = new Date(Date.UTC(year, month - 1, day));
+                date.setUTCDate(date.getUTCDate() + days);
+                return date.toISOString().slice(0, 10);
               }
 
               function selectedScope() {
@@ -1415,9 +1378,7 @@ jobs:
                   return null;
                 }
 
-                const value = document
-                  .getElementById("sprintSelect")
-                  .value;
+                const value = document.getElementById("sprintSelect").value;
 
                 if (value === "project") {
                   return {
@@ -1427,12 +1388,8 @@ jobs:
                 }
 
                 if (value.startsWith("sprint:")) {
-                  const index = Number(
-                    value.split(":")[1]
-                  );
-
-                  const sprint =
-                    projectData.sprints[index];
+                  const index = Number(value.split(":")[1]);
+                  const sprint = projectData.sprints[index];
 
                   if (!sprint) {
                     return null;
@@ -1448,39 +1405,21 @@ jobs:
               }
 
               function isProjectMode(scope) {
-                return (
-                  scope
-                  &&
-                  scope.mode === "project"
-                );
+                return scope && scope.mode === "project";
               }
 
               function sumLoe(issues) {
-                return issues.reduce(
-                  (total, issue) => {
-                    const value = Number(
-                      issue.loe
-                    );
-
-                    return total + (
-                      Number.isFinite(value)
-                      ? value
-                      : 0
-                    );
-                  },
-                  0
-                );
+                return issues.reduce((total, issue) => {
+                  const value = Number(issue.loe);
+                  return total + (Number.isFinite(value) ? value : 0);
+                }, 0);
               }
 
               function formatDays(value) {
                 const numeric = Number(value);
 
                 return (
-                  (
-                    Number.isFinite(numeric)
-                    ? numeric
-                    : 0
-                  )
+                  (Number.isFinite(numeric) ? numeric : 0)
                   .toFixed(1)
                   .replace(/\.0$/, "")
                   +
@@ -1489,23 +1428,15 @@ jobs:
               }
 
               function transitions(issue) {
-                return (
-                  issue.sprintTransitions
-                  ||
-                  []
-                )
-                .slice()
-                .sort(
-                  (a, b) =>
-                    String(
-                      a.createdAt || a.date
-                    )
-                    .localeCompare(
-                      String(
-                        b.createdAt || b.date
+                return (issue.sprintTransitions || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.createdAt || a.date)
+                      .localeCompare(
+                        String(b.createdAt || b.date)
                       )
-                    )
-                );
+                  );
               }
 
               function isSprint(value) {
@@ -1514,20 +1445,13 @@ jobs:
                 );
               }
 
-              function entriesIntoSprint(
-                issue,
-                sprint
-              ) {
+              function entriesIntoSprint(issue, sprint) {
                 return transitions(issue).filter(
-                  event =>
-                    event.to === sprint.name
+                  event => event.to === sprint.name
                 );
               }
 
-              function exitsFromSprint(
-                issue,
-                sprint
-              ) {
+              function exitsFromSprint(issue, sprint) {
                 return transitions(issue).filter(
                   event =>
                     event.from === sprint.name
@@ -1536,125 +1460,74 @@ jobs:
                 );
               }
 
-              function firstEntry(
-                issue,
-                sprint
-              ) {
-                const entries = entriesIntoSprint(
-                  issue,
-                  sprint
-                );
-
-                return (
-                  entries.length
-                  ? entries[0]
-                  : null
-                );
+              function firstEntry(issue, sprint) {
+                const entries = entriesIntoSprint(issue, sprint);
+                return entries.length ? entries[0] : null;
               }
 
               function committedIssues(sprint) {
                 return projectData.issues.filter(
-                  issue =>
-                    Boolean(
-                      firstEntry(
-                        issue,
-                        sprint
-                      )
-                    )
+                  issue => Boolean(firstEntry(issue, sprint))
                 );
               }
 
               function carriedOverIssues(sprint) {
-                return committedIssues(sprint)
-                  .filter(issue => {
-                    const entry = firstEntry(
-                      issue,
-                      sprint
-                    );
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
 
-                    return Boolean(
-                      entry
-                      &&
-                      isSprint(entry.from)
-                      &&
-                      entry.from !== sprint.name
-                    );
-                  });
+                  return Boolean(
+                    entry
+                    &&
+                    isSprint(entry.from)
+                    &&
+                    entry.from !== sprint.name
+                  );
+                });
               }
 
               function lateCutoff(sprint) {
-                return addDays(
-                  sprint.start,
-                  1
-                );
+                return addDays(sprint.start, 1);
               }
 
               function addedLateIssues(sprint) {
-                const cutoff =
-                  lateCutoff(sprint);
+                const cutoff = lateCutoff(sprint);
 
-                return committedIssues(sprint)
-                  .filter(issue => {
-                    const entry = firstEntry(
-                      issue,
-                      sprint
-                    );
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
 
-                    return Boolean(
-                      entry
-                      &&
-                      entry.date > cutoff
-                    );
-                  });
+                  return Boolean(
+                    entry
+                    &&
+                    entry.date > cutoff
+                  );
+                });
               }
 
               function removedIssues(sprint) {
-                return committedIssues(sprint)
-                  .filter(issue => {
-                    const entry = firstEntry(
-                      issue,
-                      sprint
-                    );
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
 
-                    if (!entry) {
-                      return false;
-                    }
+                  if (!entry) {
+                    return false;
+                  }
 
-                    return exitsFromSprint(
-                      issue,
-                      sprint
-                    ).some(
-                      exit =>
-                        String(
-                          exit.createdAt
-                          ||
-                          exit.date
-                        )
-                        >
-                        String(
-                          entry.createdAt
-                          ||
-                          entry.date
-                        )
-                    );
-                  });
+                  return exitsFromSprint(issue, sprint).some(
+                    exit =>
+                      String(exit.createdAt || exit.date)
+                      >
+                      String(entry.createdAt || entry.date)
+                  );
+                });
               }
 
-              function sprintEntryLabel(
-                issue,
-                sprint
-              ) {
-                const entry = firstEntry(
-                  issue,
-                  sprint
-                );
+              function sprintEntryLabel(issue, sprint) {
+                const entry = firstEntry(issue, sprint);
 
                 if (!entry) {
                   return "";
                 }
 
-                const late =
-                  entry.date > lateCutoff(sprint);
+                const late = entry.date > lateCutoff(sprint);
 
                 if (isSprint(entry.from)) {
                   return late
@@ -1667,30 +1540,17 @@ jobs:
                   : "Committed";
               }
 
-              function carriedFrom(
-                issue,
-                sprint
-              ) {
-                const entry = firstEntry(
-                  issue,
-                  sprint
-                );
+              function carriedFrom(issue, sprint) {
+                const entry = firstEntry(issue, sprint);
 
-                if (
-                  !entry
-                  ||
-                  !isSprint(entry.from)
-                ) {
+                if (!entry || !isSprint(entry.from)) {
                   return "";
                 }
 
                 return entry.from;
               }
 
-              function totalIssues(
-                scope,
-                priority = null
-              ) {
+              function totalIssues(scope, priority = null) {
                 if (isProjectMode(scope)) {
                   return projectData.issues.filter(
                     issue =>
@@ -1700,24 +1560,17 @@ jobs:
                   );
                 }
 
-                return committedIssues(scope)
-                  .filter(
-                    issue =>
-                      priority === null
-                      ||
-                      issue.priority === priority
-                  );
+                return committedIssues(scope).filter(
+                  issue =>
+                    priority === null
+                    ||
+                    issue.priority === priority
+                );
               }
 
-              function openedIssues(
-                scope,
-                priority = null
-              ) {
+              function openedIssues(scope, priority = null) {
                 if (isProjectMode(scope)) {
-                  return totalIssues(
-                    scope,
-                    priority
-                  );
+                  return totalIssues(scope, priority);
                 }
 
                 return projectData.issues.filter(
@@ -1728,34 +1581,19 @@ jobs:
                       issue.priority === priority
                     )
                     &&
-                    within(
-                      issue.opened,
-                      scope
-                    )
+                    within(issue.opened, scope)
                 );
               }
 
-              function openIssues(
-                scope,
-                priority = null
-              ) {
-                return totalIssues(
-                  scope,
-                  priority
-                ).filter(
+              function openIssues(scope, priority = null) {
+                return totalIssues(scope, priority).filter(
                   issue => !isClosed(issue)
                 );
               }
 
-              function closedIssues(
-                scope,
-                priority = null
-              ) {
+              function closedIssues(scope, priority = null) {
                 if (isProjectMode(scope)) {
-                  return totalIssues(
-                    scope,
-                    priority
-                  ).filter(isClosed);
+                  return totalIssues(scope, priority).filter(isClosed);
                 }
 
                 return projectData.issues.filter(
@@ -1766,32 +1604,23 @@ jobs:
                       issue.priority === priority
                     )
                     &&
-                    within(
-                      issue.closed,
-                      scope
-                    )
+                    within(issue.closed, scope)
                 );
               }
 
-              function completedCommittedIssues(
-                sprint
-              ) {
+              function completedCommittedIssues(sprint) {
                 const ids = new Set(
-                  committedIssues(sprint)
-                  .map(issueId)
+                  committedIssues(sprint).map(issueId)
                 );
 
-                return closedIssues(sprint)
-                  .filter(
-                    issue =>
-                      ids.has(issueId(issue))
-                  );
+                return closedIssues(sprint).filter(
+                  issue => ids.has(issueId(issue))
+                );
               }
 
               function completionRate(scope) {
                 if (isProjectMode(scope)) {
-                  const total =
-                    totalIssues(scope);
+                  const total = totalIssues(scope);
 
                   if (!total.length) {
                     return 0;
@@ -1806,17 +1635,14 @@ jobs:
                   );
                 }
 
-                const committed =
-                  committedIssues(scope);
+                const committed = committedIssues(scope);
 
                 if (!committed.length) {
                   return 0;
                 }
 
                 return (
-                  completedCommittedIssues(
-                    scope
-                  ).length
+                  completedCommittedIssues(scope).length
                   /
                   committed.length
                   *
@@ -1825,19 +1651,15 @@ jobs:
               }
 
               function meaningfulStatusEvents(issue) {
-                const events = (
-                  issue.statusEvents
-                  ||
-                  []
-                )
-                .slice()
-                .sort(
-                  (a, b) =>
-                    String(a.date || "")
-                    .localeCompare(
-                      String(b.date || "")
-                    )
-                );
+                const events = (issue.statusEvents || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.date || "")
+                      .localeCompare(
+                        String(b.date || "")
+                      )
+                  );
 
                 if (!events.length) {
                   return [];
@@ -1846,11 +1668,7 @@ jobs:
                 return events.slice(1);
               }
 
-              function statusIssues(
-                scope,
-                status,
-                priority = null
-              ) {
+              function statusIssues(scope, status, priority = null) {
                 if (isProjectMode(scope)) {
                   return projectData.issues.filter(
                     issue =>
@@ -1864,65 +1682,47 @@ jobs:
                   );
                 }
 
-                return projectData.issues.filter(
-                  issue => {
-                    if (
-                      priority !== null
-                      &&
-                      issue.priority !== priority
-                    ) {
-                      return false;
-                    }
+                return projectData.issues.filter(issue => {
+                  if (
+                    priority !== null
+                    &&
+                    issue.priority !== priority
+                  ) {
+                    return false;
+                  }
 
-                    const sprintEvents =
-                      meaningfulStatusEvents(issue)
-                      .filter(
-                        event =>
-                          within(
-                            event.date,
-                            scope
-                          )
-                      );
+                  const sprintEvents =
+                    meaningfulStatusEvents(issue)
+                    .filter(
+                      event =>
+                        within(event.date, scope)
+                    );
 
-                    if (sprintEvents.length) {
-                      return sprintEvents.some(
-                        event =>
-                          event.status === status
-                      );
-                    }
-
-                    const assignedToSprint =
-                      Boolean(
-                        firstEntry(
-                          issue,
-                          scope
-                        )
-                      );
-
-                    return (
-                      assignedToSprint
-                      &&
-                      issue.currentStatus === status
+                  if (sprintEvents.length) {
+                    return sprintEvents.some(
+                      event =>
+                        event.status === status
                     );
                   }
-                );
+
+                  const assignedToSprint =
+                    Boolean(
+                      firstEntry(issue, scope)
+                    );
+
+                  return (
+                    assignedToSprint
+                    &&
+                    issue.currentStatus === status
+                  );
+                });
               }
 
-              function statusDates(
-                issue,
-                status
-              ) {
-                return meaningfulStatusEvents(
-                  issue
-                )
-                .filter(
-                  event =>
-                    event.status === status
-                )
-                .map(
-                  event => event.date
-                )
-                .sort();
+              function statusDates(issue, status) {
+                return (issue.statusEvents || [])
+                  .filter(event => event.status === status)
+                  .map(event => event.date)
+                  .sort();
               }
 
               function workedIssues(scope) {
@@ -1932,82 +1732,45 @@ jobs:
 
                 const ids = new Set();
 
-                committedIssues(scope)
-                  .forEach(
-                    issue =>
-                      ids.add(issueId(issue))
-                  );
-
-                projectData.issues.forEach(
-                  issue => {
-                    if (
-                      within(
-                        issue.closed,
-                        scope
-                      )
-                    ) {
-                      ids.add(issueId(issue));
-                    }
-
-                    meaningfulStatusEvents(issue)
-                      .forEach(
-                        event => {
-                          if (
-                            within(
-                              event.date,
-                              scope
-                            )
-                          ) {
-                            ids.add(
-                              issueId(issue)
-                            );
-                          }
-                        }
-                      );
-                  }
+                committedIssues(scope).forEach(
+                  issue => ids.add(issueId(issue))
                 );
 
+                projectData.issues.forEach(issue => {
+                  if (within(issue.closed, scope)) {
+                    ids.add(issueId(issue));
+                  }
+
+                  meaningfulStatusEvents(issue).forEach(event => {
+                    if (within(event.date, scope)) {
+                      ids.add(issueId(issue));
+                    }
+                  });
+                });
+
                 return projectData.issues.filter(
-                  issue =>
-                    ids.has(issueId(issue))
+                  issue => ids.has(issueId(issue))
                 );
               }
 
               function isBug(issue) {
                 return (
-                  String(
-                    issue.issueType || ""
-                  )
+                  String(issue.issueType || "")
                   .toLowerCase()
                   === "bug"
                 );
               }
 
-              function bugsOpened(
-                scope,
-                priority = null
-              ) {
+              function bugsOpened(scope, priority = null) {
                 if (isProjectMode(scope)) {
-                  return totalIssues(
-                    scope,
-                    priority
-                  ).filter(isBug);
+                  return totalIssues(scope, priority).filter(isBug);
                 }
 
-                return openedIssues(
-                  scope,
-                  priority
-                ).filter(isBug);
+                return openedIssues(scope, priority).filter(isBug);
               }
 
-              function bugsClosed(
-                scope,
-                priority = null
-              ) {
-                return closedIssues(
-                  scope,
-                  priority
-                ).filter(isBug);
+              function bugsClosed(scope, priority = null) {
+                return closedIssues(scope, priority).filter(isBug);
               }
 
               function addKpi(
@@ -2018,8 +1781,7 @@ jobs:
                 subtext = "",
                 tooltip = ""
               ) {
-                const card =
-                  document.createElement("div");
+                const card = document.createElement("div");
 
                 card.className = issues
                   ? "card clickable"
@@ -2088,14 +1850,9 @@ jobs:
                 container.innerHTML = "";
 
                 if (isProjectMode(scope)) {
-                  const total =
-                    totalIssues(scope);
-
-                  const open =
-                    openIssues(scope);
-
-                  const closed =
-                    closedIssues(scope);
+                  const total = totalIssues(scope);
+                  const open = openIssues(scope);
+                  const closed = closedIssues(scope);
 
                   addKpi(
                     container,
@@ -2127,34 +1884,18 @@ jobs:
                   addKpi(
                     container,
                     "Completion",
-                    (
-                      completionRate(scope)
-                      .toFixed(0)
-                      +
-                      "%"
-                    ),
+                    completionRate(scope).toFixed(0) + "%",
                     null,
                     "",
                     "Percentage of issues that have been closed, of all issues assigned to the project."
                   );
                 } else {
-                  const opened =
-                    openedIssues(scope);
-
-                  const committed =
-                    committedIssues(scope);
-
-                  const carried =
-                    carriedOverIssues(scope);
-
-                  const late =
-                    addedLateIssues(scope);
-
-                  const removed =
-                    removedIssues(scope);
-
-                  const closed =
-                    closedIssues(scope);
+                  const opened = openedIssues(scope);
+                  const committed = committedIssues(scope);
+                  const carried = carriedOverIssues(scope);
+                  const late = addedLateIssues(scope);
+                  const removed = removedIssues(scope);
+                  const closed = closedIssues(scope);
 
                   addKpi(
                     container,
@@ -2219,12 +1960,7 @@ jobs:
                   addKpi(
                     container,
                     "Completion",
-                    (
-                      completionRate(scope)
-                      .toFixed(0)
-                      +
-                      "%"
-                    ),
+                    completionRate(scope).toFixed(0) + "%",
                     null,
                     "",
                     "Percentage of committed issues that were closed during the sprint. Closed issues that were not assigned to the sprint do not contribute to this metric."
@@ -2245,46 +1981,33 @@ jobs:
 
                 row.innerHTML = "";
 
-                projectData.statuses.forEach(
-                  status => {
-                    const issues =
-                      statusIssues(
-                        scope,
-                        status
-                      );
+                projectData.statuses.forEach(status => {
+                  const issues =
+                    statusIssues(scope, status);
 
-                    const button =
-                      document.createElement(
-                        "button"
-                      );
+                  const button =
+                    document.createElement("button");
 
-                    button.className =
-                      "status-chip";
+                  button.className = "status-chip";
 
-                    button.innerHTML = `
-                      ${escapeHtml(status)}
+                  button.innerHTML = `
+                    ${escapeHtml(status)}
+                    <strong>${issues.length}</strong>
+                  `;
 
-                      <strong>
-                        ${issues.length}
-                      </strong>
-                    `;
+                  button.onclick = () =>
+                    openDrilldown(
+                      status,
+                      scope,
+                      issues
+                    );
 
-                    button.onclick = () =>
-                      openDrilldown(
-                        status,
-                        scope,
-                        issues
-                      );
-
-                    row.appendChild(button);
-                  }
-                );
+                  row.appendChild(button);
+                });
               }
 
               const flowChart = new Chart(
-                document.getElementById(
-                  "flowChart"
-                ),
+                document.getElementById("flowChart"),
                 {
                   type: "bar",
 
@@ -2293,19 +2016,15 @@ jobs:
 
                     datasets: [
                       {
-                        label:
-                          "Assigned to Sprint",
+                        label: "Assigned to Sprint",
                         data: [],
-                        backgroundColor:
-                          "#2499e8",
+                        backgroundColor: "#2499e8",
                         borderWidth: 0
                       },
                       {
-                        label:
-                          "Not Assigned to Sprint",
+                        label: "Not Assigned to Sprint",
                         data: [],
-                        backgroundColor:
-                          "#f58220",
+                        backgroundColor: "#f58220",
                         borderWidth: 0
                       }
                     ]
@@ -2338,16 +2057,12 @@ jobs:
                       }
                     },
 
-                    onClick(
-                      event,
-                      elements
-                    ) {
+                    onClick(event, elements) {
                       if (!elements.length) {
                         return;
                       }
 
-                      const element =
-                        elements[0];
+                      const element = elements[0];
 
                       const descriptor =
                         flowChart
@@ -2375,14 +2090,12 @@ jobs:
                         : descriptor.unassigned;
 
                       openDrilldown(
+                        descriptor.label
+                        +
                         (
-                          descriptor.label
-                          +
-                          (
-                            element.datasetIndex === 0
-                            ? " · Assigned to Sprint"
-                            : " · Not Assigned to Sprint"
-                          )
+                          element.datasetIndex === 0
+                          ? " · Assigned to Sprint"
+                          : " · Not Assigned to Sprint"
                         ),
                         selectedScope(),
                         issues
@@ -2451,8 +2164,7 @@ jobs:
                         item =>
                           item.issues.length
                       ),
-                      backgroundColor:
-                        "#2499e8",
+                      backgroundColor: "#2499e8",
                       borderWidth: 0
                     }
                   ];
@@ -2487,9 +2199,10 @@ jobs:
 
                 const descriptors = [];
 
-                const opened = splitIssues(
-                  openedIssues(scope)
-                );
+                const opened =
+                  splitIssues(
+                    openedIssues(scope)
+                  );
 
                 descriptors.push({
                   label: "Opened",
@@ -2497,29 +2210,26 @@ jobs:
                   unassigned: opened.unassigned
                 });
 
-                projectData.statuses.forEach(
-                  status => {
-                    const split =
-                      splitIssues(
-                        statusIssues(
-                          scope,
-                          status
-                        )
-                      );
+                projectData.statuses.forEach(status => {
+                  const split =
+                    splitIssues(
+                      statusIssues(
+                        scope,
+                        status
+                      )
+                    );
 
-                    descriptors.push({
-                      label: status,
-                      assigned:
-                        split.assigned,
-                      unassigned:
-                        split.unassigned
-                    });
-                  }
-                );
+                  descriptors.push({
+                    label: status,
+                    assigned: split.assigned,
+                    unassigned: split.unassigned
+                  });
+                });
 
-                const closed = splitIssues(
-                  closedIssues(scope)
-                );
+                const closed =
+                  splitIssues(
+                    closedIssues(scope)
+                  );
 
                 descriptors.push({
                   label: "Closed",
@@ -2606,16 +2316,12 @@ jobs:
                       }
                     },
 
-                    onClick(
-                      event,
-                      elements
-                    ) {
+                    onClick(event, elements) {
                       if (!elements.length) {
                         return;
                       }
 
-                      const scope =
-                        selectedScope();
+                      const scope = selectedScope();
 
                       const type =
                         typeChart
@@ -2659,17 +2365,15 @@ jobs:
 
                 const counts = {};
 
-                workedIssues(scope).forEach(
-                  issue => {
-                    const type =
-                      issue.issueType
-                      ||
-                      "Unspecified";
+                workedIssues(scope).forEach(issue => {
+                  const type =
+                    issue.issueType
+                    ||
+                    "Unspecified";
 
-                    counts[type] =
-                      (counts[type] || 0) + 1;
-                  }
-                );
+                  counts[type] =
+                    (counts[type] || 0) + 1;
+                });
 
                 const values = Object
                   .entries(counts)
@@ -2682,13 +2386,10 @@ jobs:
                     value => value[0]
                   );
 
-                typeChart
-                  .data
-                  .datasets[0]
-                  .data =
-                    values.map(
-                      value => value[1]
-                    );
+                typeChart.data.datasets[0].data =
+                  values.map(
+                    value => value[1]
+                  );
 
                 typeChart
                   .data
@@ -2737,15 +2438,11 @@ jobs:
                 ).filter(Boolean);
 
                 if (!priorities.length) {
-                  card.classList.add(
-                    "hidden"
-                  );
+                  card.classList.add("hidden");
                   return;
                 }
 
-                card.classList.remove(
-                  "hidden"
-                );
+                card.classList.remove("hidden");
 
                 const header =
                   document.getElementById(
@@ -2764,18 +2461,13 @@ jobs:
                   firstMetric,
                   ...projectData.statuses,
                   "Closed"
-                ].forEach(
-                  heading => {
-                    const th =
-                      document.createElement(
-                        "th"
-                      );
+                ].forEach(heading => {
+                  const th =
+                    document.createElement("th");
 
-                    th.textContent = heading;
-
-                    header.appendChild(th);
-                  }
-                );
+                  th.textContent = heading;
+                  header.appendChild(th);
+                });
 
                 const body =
                   document.getElementById(
@@ -2784,90 +2476,80 @@ jobs:
 
                 body.innerHTML = "";
 
-                priorities.forEach(
-                  priority => {
-                    const row =
-                      document.createElement(
-                        "tr"
+                priorities.forEach(priority => {
+                  const row =
+                    document.createElement("tr");
+
+                  const first =
+                    document.createElement("td");
+
+                  first.innerHTML =
+                    `<strong>${escapeHtml(priority)}</strong>`;
+
+                  row.appendChild(first);
+
+                  function addMetric(
+                    issues,
+                    label
+                  ) {
+                    const td =
+                      document.createElement("td");
+
+                    td.className =
+                      "metric-cell";
+
+                    td.textContent =
+                      issues.length;
+
+                    td.onclick = () =>
+                      openDrilldown(
+                        `${priority} · ${label}`,
+                        scope,
+                        issues
                       );
 
-                    const first =
-                      document.createElement(
-                        "td"
-                      );
+                    row.appendChild(td);
+                  }
 
-                    first.innerHTML =
-                      `<strong>${escapeHtml(priority)}</strong>`;
-
-                    row.appendChild(first);
-
-                    function addMetric(
-                      issues,
-                      label
-                    ) {
-                      const td =
-                        document.createElement(
-                          "td"
-                        );
-
-                      td.className =
-                        "metric-cell";
-
-                      td.textContent =
-                        issues.length;
-
-                      td.onclick = () =>
-                        openDrilldown(
-                          `${priority} · ${label}`,
-                          scope,
-                          issues
-                        );
-
-                      row.appendChild(td);
-                    }
-
-                    if (isProjectMode(scope)) {
-                      addMetric(
-                        totalIssues(
-                          scope,
-                          priority
-                        ),
-                        "Total"
-                      );
-                    } else {
-                      addMetric(
-                        openedIssues(
-                          scope,
-                          priority
-                        ),
-                        "Opened"
-                      );
-                    }
-
-                    projectData.statuses.forEach(
-                      status => {
-                        addMetric(
-                          statusIssues(
-                            scope,
-                            status,
-                            priority
-                          ),
-                          status
-                        );
-                      }
-                    );
-
+                  if (isProjectMode(scope)) {
                     addMetric(
-                      closedIssues(
+                      totalIssues(
                         scope,
                         priority
                       ),
-                      "Closed"
+                      "Total"
                     );
-
-                    body.appendChild(row);
+                  } else {
+                    addMetric(
+                      openedIssues(
+                        scope,
+                        priority
+                      ),
+                      "Opened"
+                    );
                   }
-                );
+
+                  projectData.statuses.forEach(status => {
+                    addMetric(
+                      statusIssues(
+                        scope,
+                        status,
+                        priority
+                      ),
+                      status
+                    );
+                  });
+
+                  addMetric(
+                    closedIssues(
+                      scope,
+                      priority
+                    ),
+                    "Closed"
+                  );
+
+                  body.appendChild(row);
+                });
               }
 
               function renderQuality(scope) {
@@ -2955,9 +2637,7 @@ jobs:
                 renderQualityPriority(scope);
               }
 
-              function renderQualityPriority(
-                scope
-              ) {
+              function renderQualityPriority(scope) {
                 document
                   .getElementById(
                     "qualityOpenedHeader"
@@ -2990,21 +2670,12 @@ jobs:
                     "qualityPriorityCard"
                   );
 
-                if (
-                  !projectData
-                  .priorities
-                  .length
-                ) {
-                  card.classList.add(
-                    "hidden"
-                  );
-
+                if (!projectData.priorities.length) {
+                  card.classList.add("hidden");
                   return;
                 }
 
-                card.classList.remove(
-                  "hidden"
-                );
+                card.classList.remove("hidden");
 
                 document
                   .getElementById(
@@ -3022,104 +2693,96 @@ jobs:
 
                 body.innerHTML = "";
 
-                projectData.priorities.forEach(
-                  priority => {
-                    const opened =
-                      bugsOpened(
-                        scope,
-                        priority
-                      );
+                projectData.priorities.forEach(priority => {
+                  const opened =
+                    bugsOpened(
+                      scope,
+                      priority
+                    );
 
-                    const closed =
-                      bugsClosed(
-                        scope,
-                        priority
-                      );
+                  const closed =
+                    bugsClosed(
+                      scope,
+                      priority
+                    );
 
-                    const row =
-                      document.createElement(
-                        "tr"
-                      );
+                  const row =
+                    document.createElement("tr");
 
-                    const first =
-                      document.createElement(
-                        "td"
-                      );
+                  const first =
+                    document.createElement("td");
 
-                    first.innerHTML =
-                      `<strong>${escapeHtml(priority)}</strong>`;
+                  first.innerHTML =
+                    `<strong>${escapeHtml(priority)}</strong>`;
 
-                    row.appendChild(first);
+                  row.appendChild(first);
 
-                    function addCell(
-                      value,
-                      issues = null
-                    ) {
-                      const td =
-                        document.createElement(
-                          "td"
+                  function addCell(
+                    value,
+                    issues = null
+                  ) {
+                    const td =
+                      document.createElement("td");
+
+                    td.textContent = value;
+
+                    if (issues) {
+                      td.className =
+                        "metric-cell";
+
+                      td.onclick = () =>
+                        openDrilldown(
+                          `${priority} Bugs`,
+                          scope,
+                          issues
                         );
-
-                      td.textContent = value;
-
-                      if (issues) {
-                        td.className =
-                          "metric-cell";
-
-                        td.onclick = () =>
-                          openDrilldown(
-                            `${priority} Bugs`,
-                            scope,
-                            issues
-                          );
-                      }
-
-                      row.appendChild(td);
                     }
 
-                    addCell(
-                      opened.length,
-                      opened
-                    );
+                    row.appendChild(td);
+                  }
 
-                    addCell(
-                      closed.length,
-                      closed
-                    );
+                  addCell(
+                    opened.length,
+                    opened
+                  );
 
-                    addCell(
-                      isProjectMode(scope)
+                  addCell(
+                    closed.length,
+                    closed
+                  );
+
+                  addCell(
+                    isProjectMode(scope)
+                    ?
+                    (
+                      opened.length
+                      ?
+                      (
+                        closed.length
+                        /
+                        opened.length
+                        *
+                        100
+                      ).toFixed(0) + "%"
+                      :
+                      "0%"
+                    )
+                    :
+                    (
+                      closed.length
                       ?
                       (
                         opened.length
-                        ?
-                        (
-                          closed.length
-                          /
-                          opened.length
-                          *
-                          100
-                        ).toFixed(0) + "%"
-                        :
-                        "0%"
-                      )
-                      :
-                      (
+                        /
                         closed.length
-                        ?
-                        (
-                          opened.length
-                          /
-                          closed.length
-                        ).toFixed(2) + "x"
-                        :
-                        "—"
-                      )
-                    );
+                      ).toFixed(2) + "x"
+                      :
+                      "—"
+                    )
+                  );
 
-                    body.appendChild(row);
-                  }
-                );
+                  body.appendChild(row);
+                });
               }
 
               function openDrilldown(
@@ -3139,16 +2802,14 @@ jobs:
                     "drilldownSubtitle"
                   )
                   .textContent =
+                    `${scope.name} · `
+                    +
+                    `${issues.length} issue`
+                    +
                     (
-                      `${scope.name} · `
-                      +
-                      `${issues.length} issue`
-                      +
-                      (
-                        issues.length === 1
-                        ? ""
-                        : "s"
-                      )
+                      issues.length === 1
+                      ? ""
+                      : "s"
                     );
 
                 const columns = [
@@ -3170,12 +2831,14 @@ jobs:
                   {
                     label: "Title",
                     className: "title-column",
+
                     render: issue =>
                       escapeHtml(issue.title)
                   },
 
                   {
                     label: "Type",
+
                     render: issue =>
                       escapeHtml(
                         issue.issueType
@@ -3184,6 +2847,7 @@ jobs:
 
                   {
                     label: "Priority",
+
                     render: issue =>
                       escapeHtml(
                         issue.priority
@@ -3192,6 +2856,7 @@ jobs:
 
                   {
                     label: "Current Status",
+
                     render: issue =>
                       escapeHtml(
                         issue.currentStatus
@@ -3262,21 +2927,19 @@ jobs:
                     )
                 });
 
-                projectData.statuses.forEach(
-                  status => {
-                    columns.push({
-                      label: status,
+                projectData.statuses.forEach(status => {
+                  columns.push({
+                    label: status,
 
-                      render: issue =>
-                        statusDates(
-                          issue,
-                          status
-                        )
-                        .map(escapeHtml)
-                        .join("<br>")
-                    });
-                  }
-                );
+                    render: issue =>
+                      statusDates(
+                        issue,
+                        status
+                      )
+                      .map(escapeHtml)
+                      .join("<br>")
+                  });
+                });
 
                 columns.push({
                   label: "Close Date",
@@ -3294,19 +2957,15 @@ jobs:
 
                 header.innerHTML = "";
 
-                columns.forEach(
-                  column => {
-                    const th =
-                      document.createElement(
-                        "th"
-                      );
+                columns.forEach(column => {
+                  const th =
+                    document.createElement("th");
 
-                    th.textContent =
-                      column.label;
+                  th.textContent =
+                    column.label;
 
-                    header.appendChild(th);
-                  }
-                );
+                  header.appendChild(th);
+                });
 
                 const body =
                   document.getElementById(
@@ -3315,35 +2974,27 @@ jobs:
 
                 body.innerHTML = "";
 
-                issues.forEach(
-                  issue => {
-                    const row =
-                      document.createElement(
-                        "tr"
-                      );
+                issues.forEach(issue => {
+                  const row =
+                    document.createElement("tr");
 
-                    columns.forEach(
-                      column => {
-                        const td =
-                          document.createElement(
-                            "td"
-                          );
+                  columns.forEach(column => {
+                    const td =
+                      document.createElement("td");
 
-                        if (column.className) {
-                          td.className =
-                            column.className;
-                        }
+                    if (column.className) {
+                      td.className =
+                        column.className;
+                    }
 
-                        td.innerHTML =
-                          column.render(issue);
+                    td.innerHTML =
+                      column.render(issue);
 
-                        row.appendChild(td);
-                      }
-                    );
+                    row.appendChild(td);
+                  });
 
-                    body.appendChild(row);
-                  }
-                );
+                  body.appendChild(row);
+                });
 
                 document
                   .getElementById(
@@ -3396,8 +3047,7 @@ jobs:
               );
 
               function renderAll() {
-                const scope =
-                  selectedScope();
+                const scope = selectedScope();
 
                 if (!scope) {
                   return;
@@ -3471,8 +3121,7 @@ jobs:
                     }
                   );
 
-                  const today =
-                    localToday();
+                  const today = localToday();
 
                   const currentIndex =
                     data.sprints.findIndex(
@@ -3501,9 +3150,10 @@ jobs:
                 response => response.json()
               )
               .then(build => {
-                const date = new Date(
-                  build.generatedAt
-                );
+                const date =
+                  new Date(
+                    build.generatedAt
+                  );
 
                 document
                   .getElementById(

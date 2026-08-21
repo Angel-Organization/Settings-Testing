@@ -1833,7 +1833,6 @@ jobs:
 
                 const statuses = new Set();
 
-                // Find the status the issue was in when it entered the sprint.
                 const eventBeforeEntry = events
                   .filter(event => event.date <= entryDate)
                   .at(-1);
@@ -1841,8 +1840,6 @@ jobs:
                 if (eventBeforeEntry?.status) {
                   statuses.add(eventBeforeEntry.status);
                 } else {
-                  // If there is no earlier status event, the first later
-                  // transition tells us which status it was coming from.
                   const firstLaterEvent = events.find(
                     event =>
                       event.date >= entryDate
@@ -1852,12 +1849,10 @@ jobs:
                   if (firstLaterEvent?.previousStatus) {
                     statuses.add(firstLaterEvent.previousStatus);
                   } else if (issue.currentStatus) {
-                    // Fallback for an issue that never changed status.
                     statuses.add(issue.currentStatus);
                   }
                 }
 
-                // Keep every status reached after entering the sprint.
                 events.forEach(event => {
                   if (
                     event.date >= entryDate
@@ -1893,14 +1888,10 @@ jobs:
 
                   const assignedStatuses = sprintStatuses(issue, scope);
 
-                  // Sprint-assigned issues retain every status they occupied
-                  // while part of the sprint.
                   if (assignedStatuses) {
                     return assignedStatuses.has(status);
                   }
 
-                  // Issues never assigned to the sprint only count actual
-                  // status activity that occurred during the sprint.
                   return meaningfulStatusEvents(issue)
                     .filter(event => within(event.date, scope))
                     .some(event => event.status === status);
@@ -3238,7 +3229,7 @@ jobs:
             "Not Assigned to Sprint" \
             "#f58220" \
             "meaningfulStatusEvents" \
-            "assignedToSprint" \
+            "sprintStatuses" \
             "lastUpdated" \
             "info-tooltip" \
             "flowDescription" \

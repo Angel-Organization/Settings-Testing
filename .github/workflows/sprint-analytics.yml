@@ -2626,7 +2626,7 @@ jobs:
                     ),
                     null,
                     "",
-                    "Ratio of open bugs to closed bugs. Above 1.0 means the bug backlog is growing."
+                    "Percentage of closed bugs, of total bugs assigned to project."
                   );
                 } else {
                   addKpi(

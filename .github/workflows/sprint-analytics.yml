@@ -1782,7 +1782,7 @@ jobs:
                 <div class="grid-two">
                   <div class="card">
                     <h3 id="flowTitle">
-                      Sprint Flow
+                      All Sprint Activity
                     </h3>
 
                     <div class="chart">
@@ -1800,7 +1800,9 @@ jobs:
                 </div>
 
                 <div id="priorityCard" class="card">
-                  <h3>Flow by Priority</h3>
+                  <h3 id="priorityTitle">
+                    Sprint Activity by Priority
+                  </h3>
 
                   <div class="table-wrap">
                     <table>
@@ -2634,7 +2636,7 @@ jobs:
                  * Project.
                  *
                  * It is expected setup, not workflow
-                 * activity, so Sprint Flow ignores it.
+                 * activity, so Sprint Activity ignores it.
                  *
                  * Entire Project mode still uses
                  * currentStatus and is unaffected.
@@ -2678,29 +2680,80 @@ jobs:
                 return projectData
                   .issues
                   .filter(
-                    issue =>
-                      (
-                        priority === null
-                        ||
+                    issue => {
+
+                      if (
+                        priority !== null
+                        &&
                         issue.priority
-                        ===
+                        !==
                         priority
-                      )
-                      &&
-                      meaningfulStatusEvents(
-                        issue
-                      )
-                      .some(
-                        event =>
-                          event.status
-                          ===
-                          status
-                          &&
-                          within(
-                            event.date,
+                      ) {
+                        return false;
+                      }
+
+
+                      const sprintEvents =
+                        meaningfulStatusEvents(
+                          issue
+                        )
+                        .filter(
+                          event =>
+                            within(
+                              event.date,
+                              scope
+                            )
+                        );
+
+
+                      /*
+                       * If the issue actually moved during
+                       * the selected sprint, use the
+                       * historical status activity.
+                       */
+                      if (
+                        sprintEvents.length
+                      ) {
+                        return sprintEvents
+                          .some(
+                            event =>
+                              event.status
+                              ===
+                              status
+                          );
+                      }
+
+
+                      /*
+                       * If an issue was assigned to this
+                       * sprint but never changed status
+                       * during the sprint, still represent
+                       * that committed work under its
+                       * current status.
+                       *
+                       * This fallback is intentionally only
+                       * for assigned work. Unassigned work
+                       * must have real status activity
+                       * during the sprint to appear.
+                       */
+                      const assignedToSprint =
+                        Boolean(
+                          firstEntry(
+                            issue,
                             scope
                           )
-                      )
+                        );
+
+
+                      return (
+                        assignedToSprint
+                        &&
+                        issue.currentStatus
+                        ===
+                        status
+                      );
+
+                    }
                   );
               }
 
@@ -3245,9 +3298,9 @@ jobs:
                 title.textContent =
                   isProjectMode(scope)
                   ?
-                  "Project Flow"
+                  "Current Project Status"
                   :
-                  "Sprint Flow";
+                  "All Sprint Activity";
 
 
                 if (
@@ -3636,6 +3689,19 @@ jobs:
                   document.getElementById(
                     "priorityCard"
                   );
+
+                const title =
+                  document.getElementById(
+                    "priorityTitle"
+                  );
+
+                title.textContent =
+                  isProjectMode(scope)
+                  ?
+                  "Status by Priority"
+                  :
+                  "Sprint Activity by Priority";
+
 
                 const priorities =
                   (
@@ -4539,12 +4605,16 @@ jobs:
           grep -q "Added Late" site/index.html
           grep -q "Removed" site/index.html
           grep -q "Work by Type" site/index.html
-          grep -q "Flow by Priority" site/index.html
+          grep -q "All Sprint Activity" site/index.html
+          grep -q "Sprint Activity by Priority" site/index.html
+          grep -q "Current Project Status" site/index.html
+          grep -q "Status by Priority" site/index.html
           grep -q "Bugs by Priority" site/index.html
           grep -q "Assigned to Sprint" site/index.html
           grep -q "Not Assigned to Sprint" site/index.html
           grep -q "#f58220" site/index.html
           grep -q "meaningfulStatusEvents" site/index.html
+          grep -q "assignedToSprint" site/index.html
 
           echo "Sprint Analytics dashboard verified."
 

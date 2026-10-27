@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      OWNER: daw-systems
+      OWNER: angel-organization
 
       # ------------------------------------------------------------
       # CONFIGURATION
@@ -45,7 +45,7 @@ jobs:
       # ScriptSure #5 used the original sprint-tracker comment format.
       # Newer projects use sprint-tracker-project-N.
       # ------------------------------------------------------------
-      LEGACY_PROJECT_NUMBER: "5"
+      LEGACY_PROJECT_NUMBER: "1"
 
     steps:
       - name: Checkout repository

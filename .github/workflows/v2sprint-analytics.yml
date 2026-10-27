@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      ORG: daw-systems
-      LEGACY_PROJECT_NUMBER: "5"
+      ORG: angel-organization
+      LEGACY_PROJECT_NUMBER: "1"
 
     steps:
       - name: Checkout

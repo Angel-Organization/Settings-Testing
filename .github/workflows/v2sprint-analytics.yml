@@ -1,4 +1,4 @@
-name: Sprint Analytics
+name: Sprint Analytics - Verified Test
 
 on:
   workflow_dispatch:
@@ -44,6 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "Sprint Analytics verified build v2 - Python heredoc included"
 
           mkdir -p site/data
 
@@ -94,3 +95,2572 @@ jobs:
             $cursor: String
           ) {
             organization(login: $org) {
+              projectV2(number: $number) {
+                number
+                title
+                shortDescription
+                url
+                fields(first: 100) {
+                  nodes {
+                    __typename
+                    ... on ProjectV2Field {
+                      name
+                      dataType
+                    }
+                    ... on ProjectV2SingleSelectField {
+                      name
+                      dataType
+                      options {
+                        name
+                      }
+                    }
+                    ... on ProjectV2IterationField {
+                      name
+                      dataType
+                      configuration {
+                        iterations {
+                          title
+                          startDate
+                          duration
+                        }
+                        completedIterations {
+                          title
+                          startDate
+                          duration
+                        }
+                      }
+                    }
+                  }
+                }
+                items(
+                  first: 100,
+                  after: $cursor,
+                  archivedStates: [ARCHIVED, NOT_ARCHIVED]
+                ) {
+                  pageInfo {
+                    hasNextPage
+                    endCursor
+                  }
+                  nodes {
+                    isArchived
+                    fieldValues(first: 100) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                        ... on ProjectV2ItemFieldNumberValue {
+                          number
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                        ... on ProjectV2ItemFieldIterationValue {
+                          title
+                          startDate
+                          duration
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                        ... on ProjectV2ItemFieldDateValue {
+                          date
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                        ... on ProjectV2ItemFieldTextValue {
+                          text
+                          field {
+                            ... on ProjectV2FieldCommon {
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                    content {
+                      ... on Issue {
+                        number
+                        title
+                        state
+                        createdAt
+                        closedAt
+                        url
+                        repository {
+                          nameWithOwner
+                        }
+                        issueType {
+                          name
+                        }
+                        issueFieldValues(first: 30) {
+                          nodes {
+                            ... on IssueFieldSingleSelectValue {
+                              name
+                              field {
+                                ... on IssueFieldSingleSelect {
+                                  name
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
+          STATUS_QUERY = '''
+          query(
+            $owner: String!,
+            $repo: String!,
+            $number: Int!
+          ) {
+            repository(
+              owner: $owner,
+              name: $repo
+            ) {
+              issue(number: $number) {
+                timelineItems(
+                  first: 250,
+                  itemTypes: [
+                    PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
+                  ]
+                ) {
+                  nodes {
+                    ... on ProjectV2ItemStatusChangedEvent {
+                      createdAt
+                      previousStatus
+                      status
+                      project {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          '''
+          def normalize(value):
+              return re.sub(
+                  '[^a-z0-9]+',
+                  ' ',
+                  str(value or '').lower()
+              ).strip()
+          def find_field(fields, aliases, data_type=None):
+              aliases = {normalize(alias) for alias in aliases}
+              for field in fields:
+                  if normalize(field.get('name')) not in aliases:
+                      continue
+                  if data_type and field.get('dataType') != data_type:
+                      continue
+                  return field
+              return None
+          def find_sprint_field(fields):
+              field = find_field(
+                  fields,
+                  ['Sprint', 'Iteration'],
+                  'ITERATION'
+              )
+              if field:
+                  return field
+              for candidate in fields:
+                  if candidate.get('dataType') == 'ITERATION':
+                      return candidate
+              return None
+          def project_values(item):
+              output = {}
+              for value in item.get('fieldValues', {}).get('nodes', []):
+                  field = value.get('field') or {}
+                  name = field.get('name')
+                  if not name:
+                      continue
+                  typename = value.get('__typename')
+                  if typename == 'ProjectV2ItemFieldSingleSelectValue':
+                      output[name] = value.get('name')
+                  elif typename == 'ProjectV2ItemFieldNumberValue':
+                      output[name] = value.get('number')
+                  elif typename == 'ProjectV2ItemFieldIterationValue':
+                      output[name] = value.get('title')
+                  elif typename == 'ProjectV2ItemFieldDateValue':
+                      output[name] = value.get('date')
+                  elif typename == 'ProjectV2ItemFieldTextValue':
+                      output[name] = value.get('text')
+              return output
+          def issue_values(issue):
+              output = {}
+              for value in issue.get('issueFieldValues', {}).get('nodes', []):
+                  field = value.get('field') or {}
+                  name = field.get('name')
+                  if not name:
+                      continue
+                  output[name] = value.get('name')
+              return output
+          def semantic_value(values, aliases):
+              aliases = {normalize(alias) for alias in aliases}
+              for name, value in values.items():
+                  if normalize(name) in aliases:
+                      return value
+              return None
+          status_cache = {}
+          comment_cache = {}
+          def get_status_events(repository, number):
+              key = f'{repository}#{number}'
+              if key in status_cache:
+                  return status_cache[key]
+              owner, repo = repository.split('/', 1)
+              result = graphql(
+                  STATUS_QUERY,
+                  {
+                      'owner': owner,
+                      'repo': repo,
+                      'number': number
+                  }
+              )
+              issue = (
+                  result
+                  .get('data', {})
+                  .get('repository', {})
+                  .get('issue')
+              )
+              nodes = (
+                  issue.get('timelineItems', {}).get('nodes', [])
+                  if issue
+                  else []
+              )
+              status_cache[key] = nodes
+              return nodes
+          def get_issue_comments(repository, number):
+              key = f'{repository}#{number}'
+              if key in comment_cache:
+                  return comment_cache[key]
+              result = subprocess.run(
+                  [
+                      'gh',
+                      'api',
+                      '--method',
+                      'GET',
+                      '--paginate',
+                      '--slurp',
+                      f'repos/{repository}/issues/{number}/comments',
+                      '-f',
+                      'per_page=100'
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True
+              )
+              pages = json.loads(result.stdout)
+              comments = []
+              for page in pages:
+                  if isinstance(page, list):
+                      comments.extend(page)
+              comment_cache[key] = comments
+              return comments
+          def parse_sprint_transitions(comments, project_number):
+              # Legacy comments belong only to the original ScriptSure project.
+              marker = ('sprint-tracker' if project_number == LEGACY_PROJECT_NUMBER
+                        else f'sprint-tracker-project-{project_number}')
+              pattern = re.compile(
+                  rf'<!--\s*{re.escape(marker)}:\s*(.*?)\s*->\s*(.*?)\s*-->',
+                  re.IGNORECASE
+              )
+              transitions = []
+              for comment in comments:
+                  created_at = comment.get('created_at')
+                  if not created_at: continue
+                  for match in pattern.finditer(comment.get('body') or ''):
+                      transitions.append({
+                          'from': match.group(1).strip(),
+                          'to': match.group(2).strip(),
+                          'date': created_at[:10],
+                          'createdAt': created_at
+                      })
+              return sorted(transitions, key=lambda event: event['createdAt'])
+          # Paginate project discovery so new projects appear automatically.
+          projects, project_cursor = [], None
+          while True:
+              projects_result = graphql(PROJECTS_QUERY, {'org': ORG, 'cursor': project_cursor})
+              connection = projects_result['data']['organization']['projectsV2']
+              projects.extend(project for project in connection['nodes']
+                              if project and not project['closed'])
+              if not connection['pageInfo']['hasNextPage']: break
+              project_cursor = connection['pageInfo']['endCursor']
+          print(f'Found {len(projects)} open projects')
+          def load_project(project):
+              cursor = None
+              raw_items = []
+              raw_field_nodes = []
+              metadata = None
+              while True:
+                  result = graphql(
+                      PROJECT_QUERY,
+                      {
+                          'org': ORG,
+                          'number': project['number'],
+                          'cursor': cursor
+                      }
+                  )
+                  pv2 = result['data']['organization']['projectV2']
+                  if metadata is None:
+                      metadata = {
+                          'number': pv2['number'],
+                          'title': pv2['title'],
+                          'description': pv2.get('shortDescription') or '',
+                          'url': pv2['url']
+                      }
+                      raw_field_nodes = pv2['fields']['nodes']
+                  connection = pv2['items']
+                  raw_items.extend(connection['nodes'])
+                  if not connection['pageInfo']['hasNextPage']:
+                      break
+                  cursor = connection['pageInfo']['endCursor']
+              fields = []
+              for raw in raw_field_nodes:
+                  fields.append({
+                      'name': raw.get('name'),
+                      'dataType': raw.get('dataType'),
+                      'kind': raw.get('__typename'),
+                      'options': [
+                          option['name']
+                          for option in raw.get('options', [])
+                      ]
+                  })
+              status_field = find_field(
+                  fields,
+                  ['Status'],
+                  'SINGLE_SELECT'
+              )
+              sprint_field = find_sprint_field(fields)
+              priority_field = find_field(
+                  fields,
+                  ['Priority', 'Initial Priority'],
+                  'SINGLE_SELECT'
+              )
+              size_field = find_field(
+                  fields,
+                  [
+                      'Size',
+                      'T-Shirt Size',
+                      'T Shirt Size',
+                      'Tshirt Size',
+                      'Shirt Size'
+                  ],
+                  'SINGLE_SELECT'
+              )
+              loe_field = find_field(
+                  fields,
+                  [
+                      'LOE',
+                      'Level of Effort',
+                      'Effort Days',
+                      'Estimated Days'
+                  ],
+                  'NUMBER'
+              )
+              sprints = {}
+              if sprint_field:
+                  raw_sprint_field = next(
+                      (
+                          raw
+                          for raw in raw_field_nodes
+                          if raw.get('name') == sprint_field['name']
+                      ),
+                      None
+                  )
+                  if raw_sprint_field:
+                      config = raw_sprint_field.get('configuration') or {}
+                      iterations = (
+                          config.get('completedIterations', [])
+                          + config.get('iterations', [])
+                      )
+                      for sprint in iterations:
+                          start = sprint['startDate']
+                          duration = int(sprint['duration'])
+                          end = (
+                              datetime.fromisoformat(start)
+                              + timedelta(days=duration - 1)
+                          ).date().isoformat()
+                          sprints[sprint['title']] = {
+                              'name': sprint['title'],
+                              'start': start,
+                              'end': end,
+                              'duration': duration
+                          }
+              issues = []
+              observed_priorities = set()
+              observed_sizes = set()
+              for item in raw_items:
+                  issue = item.get('content')
+                  if not issue or not issue.get('number'):
+                      continue
+                  repository = (
+                      issue
+                      .get('repository', {})
+                      .get('nameWithOwner')
+                  )
+                  if not repository:
+                      continue
+                  pv = project_values(item)
+                  iv = issue_values(issue)
+                  priority = semantic_value(
+                      iv,
+                      ['Priority', 'Initial Priority']
+                  )
+                  if priority is None:
+                      priority = semantic_value(
+                          pv,
+                          ['Priority', 'Initial Priority']
+                      )
+                  if priority is None:
+                      priority = 'Unspecified'
+                  observed_priorities.add(str(priority))
+                  size = semantic_value(
+                      pv,
+                      [
+                          'Size',
+                          'T-Shirt Size',
+                          'T Shirt Size',
+                          'Tshirt Size',
+                          'Shirt Size'
+                      ]
+                  )
+                  if size is not None:
+                      observed_sizes.add(str(size))
+                  loe = semantic_value(
+                      pv,
+                      [
+                          'LOE',
+                          'Level of Effort',
+                          'Effort Days',
+                          'Estimated Days'
+                      ]
+                  )
+                  current_sprint = (
+                      pv.get(sprint_field['name'])
+                      if sprint_field
+                      else None
+                  )
+                  current_status = (
+                      pv.get(status_field['name'])
+                      if status_field
+                      else None
+                  )
+                  issues.append({
+                      'number': issue['number'],
+                      'repository': repository,
+                      'title': issue['title'],
+                      'url': issue['url'],
+                      'state': issue['state'],
+                      'archived': item.get('isArchived', False),
+                      'issueType': (
+                          (issue.get('issueType') or {}).get('name')
+                          or 'Unspecified'
+                      ),
+                      'priority': priority,
+                      'size': size,
+                      'loe': loe,
+                      'currentSprint': current_sprint,
+                      'currentStatus': current_status,
+                      'opened': issue['createdAt'][:10],
+                      'closed': (
+                          issue['closedAt'][:10]
+                          if issue['closedAt']
+                          else None
+                      ),
+                      'statusEvents': [],
+                      'sprintTransitions': []
+                  })
+              for index, issue in enumerate(issues, start=1):
+                  print(
+                      f"Project {project['number']}: "
+                      f"[{index}/{len(issues)}] "
+                      f"{issue['repository']}#{issue['number']}"
+                  )
+                  try:
+                      status_nodes = get_status_events(
+                          issue['repository'],
+                          issue['number']
+                      )
+                      for event in status_nodes:
+                          event_project = event.get('project') or {}
+                          if event_project.get('number') != project['number']:
+                              continue
+                          status = event.get('status')
+                          created_at = event.get('createdAt')
+                          if not status or not created_at:
+                              continue
+                          issue['statusEvents'].append({
+                              'status': status,
+                              'previousStatus': event.get('previousStatus'),
+                              'date': created_at[:10]
+                          })
+                      comments = get_issue_comments(
+                          issue['repository'],
+                          issue['number']
+                      )
+                      issue['sprintTransitions'] = (
+                          parse_sprint_transitions(comments, project['number'])
+                      )
+                      issue['statusEvents'].sort(
+                          key=lambda event: event['date']
+                      )
+                  except Exception as exc:
+                      print(
+                          f"WARNING "
+                          f"{issue['repository']}#{issue['number']}: "
+                          f"{exc}"
+                      )
+              statuses = []
+              if status_field:
+                  statuses.extend(status_field.get('options', []))
+              preferred_order = [
+                  'PROD Critical',
+                  'P0',
+                  'P1',
+                  'P2',
+                  'P3',
+                  'P4'
+              ]
+              project_priority_options = (
+                  priority_field.get('options', [])
+                  if priority_field
+                  else []
+              )
+              all_priorities = (
+                  set(project_priority_options)
+                  | observed_priorities
+              )
+              priorities = []
+              for priority in preferred_order:
+                  if priority in all_priorities:
+                      priorities.append(priority)
+              for priority in sorted(all_priorities):
+                  if priority not in priorities:
+                      priorities.append(priority)
+              sizes = []
+              if size_field:
+                  sizes.extend(size_field.get('options', []))
+              for size in sorted(observed_sizes):
+                  if size not in sizes:
+                      sizes.append(size)
+              capabilities = {
+                  'status': {
+                      'available': bool(statuses)
+                  },
+                  'sprint': {
+                      'available': bool(sprints)
+                  },
+                  'priority': {
+                      'available': any(
+                          issue['priority'] != 'Unspecified'
+                          for issue in issues
+                      )
+                  },
+                  'size': {
+                      'available': (
+                          size_field is not None
+                          or bool(observed_sizes)
+                      )
+                  },
+                  'loe': {
+                      'available': (
+                          loe_field is not None
+                          or any(
+                              issue['loe'] is not None
+                              for issue in issues
+                          )
+                      )
+                  }
+              }
+              return {
+                  'project': metadata,
+                  'fields': fields,
+                  'capabilities': capabilities,
+                  'sprints': sorted(
+                      sprints.values(),
+                      key=lambda sprint: sprint['start']
+                  ),
+                  'statuses': statuses,
+                  'priorities': priorities,
+                  'sizes': sizes,
+                  'issues': issues
+              }
+          project_index = []
+          for project in projects:
+              data = load_project(project)
+              readable_issue_count = len(data['issues'])
+              if readable_issue_count == 0:
+                  print(
+                      f"Skipping Project {project['number']}: "
+                      f"{project['title']} (no readable issues)"
+                  )
+                  continue
+              slug = f"project-{project['number']}"
+              # Keep the original project payload and UI unchanged, but move
+              # historical events to monthly files loaded only when needed.
+              history = {}
+              all_events = {}
+              for issue in data['issues']:
+                  key = f"{issue['repository']}#{issue['number']}"
+                  all_events[key] = {field: list(issue[field]) for field in
+                                     ('sprintTransitions', 'statusEvents')}
+                  for field in ('sprintTransitions', 'statusEvents'):
+                      for event in issue[field]:
+                          month = (event.get('date') or '')[:7]
+                          if not re.fullmatch(r'\d{4}-\d{2}', month): continue
+                          bucket = history.setdefault(month, {}).setdefault(key, {
+                              'sprintTransitions': [], 'statusEvents': []
+                          })
+                          bucket[field].append(event)
+                      issue[field] = []
+              # Materialize empty months too: a sprint may have no events
+              # during its dates but still need an earlier assignment baseline.
+              dates = [sprint['start'] for sprint in data['sprints'] if sprint.get('start')]
+              dates += [event_month + '-01' for event_month in history]
+              if dates:
+                  cursor = datetime.strptime(min(dates)[:7] + '-01', '%Y-%m-%d')
+                  today = datetime.now()
+                  while cursor <= today:
+                      history.setdefault(cursor.strftime('%Y-%m'), {})
+                      cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+              folder = Path(f'site/data/{slug}/history')
+              folder.mkdir(parents=True, exist_ok=True)
+              for month, events in history.items():
+                  # Baselines preserve assignments made before the requested
+                  # period, including commitments made before sprint start.
+                  baseline = {}
+                  for key, fields in all_events.items():
+                      earlier = {}
+                      for field in ('sprintTransitions', 'statusEvents'):
+                          prior = [event for event in fields[field]
+                                   if event['date'] < month + '-01']
+                          if prior: earlier[field] = prior[-1]
+                      if earlier: baseline[key] = earlier
+                  events['__baseline'] = baseline
+                  (folder / f'{month}.json').write_text(json.dumps(events))
+              data['historyMonths'] = sorted(history)
+              Path(f'site/data/{slug}.json').write_text(
+                  json.dumps(data, indent=2)
+              )
+              project_index.append({
+                  'number': project['number'],
+                  'title': project['title'],
+                  'description': project.get('shortDescription') or '',
+                  'slug': slug,
+                  'issueCount': readable_issue_count,
+                  'capabilities': data['capabilities']
+              })
+          print(
+              f'Publishing {len(project_index)} '
+              f'projects with readable issues'
+          )
+          Path('site/data/projects.json').write_text(
+              json.dumps(project_index, indent=2)
+          )
+          Path('site/data/build.json').write_text(
+              json.dumps({
+                  'generatedAt': datetime.now().astimezone().isoformat()
+              })
+          )
+          PY
+
+      - name: Create Sprint Analytics dashboard
+        shell: bash
+        run: |
+          cat > site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta
+              name="viewport"
+              content="width=device-width,initial-scale=1"
+            >
+            <meta
+              http-equiv="Cache-Control"
+              content="no-cache, no-store, must-revalidate"
+            >
+            <meta http-equiv="Pragma" content="no-cache">
+            <meta http-equiv="Expires" content="0">
+            <title>Sprint Analytics</title>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <style>
+              :root {
+                --blue: #2499e8; --blue-deep: #0f5f98; --blue-light: #eaf6fd; --orange: #f58220; --green: #49b94f; --navy: #172033; --text: #172033; --muted: #667085; --border: #d7e0e7; --page-bg: #f4f6f8;
+              }
+              * {
+                box-sizing: border-box;
+              }
+              html,
+              body {
+                width: 100%; min-height: 100%; margin: 0;
+              }
+              body {
+                overflow-x: hidden; background: var(--page-bg); color: var(--text); font-family:
+                  Inter,
+                  system-ui,
+                  -apple-system,
+                  BlinkMacSystemFont,
+                  "Segoe UI",
+                sans-serif;
+              }
+              main {
+                width: 100%; max-width: 1600px; margin: 0 auto; padding: 0 32px 50px;
+              }
+              .page-header {
+                display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 0 -32px; padding: 28px 32px 24px; background: var(--blue-deep); color: #ffffff;
+              }
+              h1 {
+                margin: 0; padding: 0; color: #ffffff; font-size: 30px; font-weight: 800;
+              }
+              .last-updated {
+                color: rgba(255, 255, 255, .82); font-size: 12px; white-space: nowrap;
+              }
+              .toolbar {
+                display: flex; flex-wrap: wrap; gap: 12px; margin: 0 -32px 28px; padding: 18px 32px; border-bottom: 1px solid var(--border);
+              }
+              select {
+                min-width: 240px; padding: 10px 14px; background: #ffffff; color: var(--navy); border: 1px solid var(--border); border-radius: 8px; font-weight: 700;
+              }
+              .section {
+                margin-bottom: 36px;
+              }
+              .section-header {
+                margin-bottom: 14px; padding-bottom: 9px; border-bottom: 1px solid var(--border);
+              }
+              .section-header h2 {
+                margin: 0; color: var(--navy); font-size: 20px;
+              }
+              .kpis {
+                display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 14px; margin-bottom: 16px;
+              }
+              .card {
+                min-width: 0; background: #ffffff; border: 1px solid var(--border); border-radius: 14px; padding: 18px; box-shadow: 0 3px 10px rgba(23, 32, 51, .07);
+              }
+              .clickable {
+                cursor: pointer;
+              }
+              .clickable:hover {
+                box-shadow: 0 8px 22px rgba(23, 32, 51, .13);
+              }
+              .label {
+                display: flex; align-items: center; gap: 5px; color: #586577; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .045em;
+              }
+              .number {
+                margin-top: 6px; color: var(--navy); font-size: 31px; font-weight: 800;
+              }
+              .subnumber {
+                margin-top: 5px; color: var(--muted); font-size: 12px;
+              }
+              .info-wrap {
+                position: relative; display: inline-flex; align-items: center; text-transform: none; letter-spacing: normal;
+              }
+              .info-icon {
+                display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border: 1px solid #98a2b3; border-radius: 50%; color: #667085; font-size: 10px; font-weight: 800; line-height: 1; cursor: help;
+              }
+              .info-tooltip {
+                position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: 20; width: 250px; padding: 9px 11px; border-radius: 8px; background: var(--navy); color: #ffffff; font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; text-transform: none; letter-spacing: normal; box-shadow: 0 6px 18px rgba(23, 32, 51, .18); opacity: 0; visibility: hidden; transform: translate(-50%, 4px); transition:
+                  opacity .12s ease,
+                  transform .12s ease,
+                visibility .12s ease; pointer-events: none;
+              }
+              .info-wrap:hover .info-tooltip,
+              .info-wrap:focus-within .info-tooltip {
+                opacity: 1; visibility: visible; transform: translate(-50%, 0);
+              }
+              .chart-description {
+                margin: -9px 0 14px; color: var(--muted); font-size: 12px; line-height: 1.45;
+              }
+              .status-row {
+                display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px;
+              }
+              .status-chip {
+                padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px; background: #ffffff; color: var(--navy); font-size: 12px; cursor: pointer;
+              }
+              .status-chip strong {
+                margin-left: 6px; color: var(--blue-deep);
+              }
+              .grid-two {
+                display: grid; grid-template-columns:
+                  minmax(0, 2fr)
+                minmax(320px, 1fr); gap: 18px; margin-bottom: 18px;
+              }
+              .chart {
+                position: relative; width: 100%; height: 330px;
+              }
+              .chart canvas {
+                display: block; width: 100% !important; max-width: 100% !important; height: 100% !important;
+              }
+              h3 {
+                margin: 0 0 16px; color: var(--navy);
+              }
+              .table-wrap {
+                width: 100%; overflow-x: auto;
+              }
+              table {
+                width: 100%; border-collapse: collapse;
+              }
+              th,
+              td {
+                padding: 11px; border-bottom: 1px solid #edf0f4; text-align: right; vertical-align: top; white-space: nowrap;
+              }
+              th {
+                background: var(--blue-light); color: var(--blue-deep); font-size: 11px; font-weight: 800; text-transform: uppercase;
+              }
+              th:first-child,
+              td:first-child {
+                text-align: left;
+              }
+              .metric-cell {
+                color: var(--blue-deep); font-weight: 750; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer;
+              }
+              .hidden {
+                display: none !important;
+              }
+              .modal-backdrop {
+                position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(15, 23, 42, .58);
+              }
+              .modal {
+                width: min(98vw, 1900px); max-height: 92vh; overflow: hidden; background: #ffffff; border-radius: 16px;
+              }
+              .modal-header {
+                display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: var(--blue-deep); color: #ffffff;
+              }
+              .modal-header h2 {
+                margin: 0 0 4px;
+              }
+              .modal-subtitle {
+                font-size: 12px; color: rgba(255, 255, 255, .84);
+              }
+              .close-button {
+                border: 0; background: transparent; color: #ffffff; font-size: 32px; cursor: pointer;
+              }
+              .modal-body {
+                max-height: 78vh; overflow: auto;
+              }
+              .drilldown-table {
+                width: max-content; min-width: 100%;
+              }
+              .drilldown-table th {
+                position: sticky; top: 0; z-index: 4;
+              }
+              .issue-link {
+                color: var(--blue-deep); text-decoration: none; font-weight: 750;
+              }
+              .title-column {
+                min-width: 280px; max-width: 420px; white-space: normal; text-align: left;
+              }
+              @media(max-width:900px) {
+                main {
+                padding: 0 18px 30px;
+                }
+                .page-header {
+                margin: 0 -18px; padding: 24px 18px 20px; align-items: flex-start; flex-direction: column; gap: 6px;
+                }
+                .toolbar {
+                margin: 0 -18px 24px; padding: 15px 18px;
+                }
+                .grid-two {
+                grid-template-columns: minmax(0, 1fr);
+                }
+                select {
+                width: 100%; min-width: 0;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            <main>
+              <div class="page-header">
+                <h1>Sprint Analytics</h1>
+                <div id="lastUpdated" class="last-updated">
+                  Last updated —
+                </div>
+              </div>
+              <div class="toolbar">
+                <select id="projectSelect"></select>
+                <select id="sprintSelect"></select>
+              </div>
+              <section class="section">
+                <div class="section-header">
+                  <h2>Overview</h2>
+                </div>
+                <div id="overviewKpis" class="kpis"></div>
+                <div id="statusRow" class="status-row"></div>
+                <div class="grid-two">
+                  <div class="card">
+                    <h3 id="flowTitle">All Sprint Activity</h3>
+                    <div
+                      id="flowDescription"
+                      class="chart-description"
+                    ></div>
+                    <div class="chart">
+                      <canvas id="flowChart"></canvas>
+                    </div>
+                  </div>
+                  <div class="card">
+                    <h3>Work by Type</h3>
+                    <div
+                      id="typeDescription"
+                      class="chart-description"
+                    ></div>
+                    <div class="chart">
+                      <canvas id="typeChart"></canvas>
+                    </div>
+                  </div>
+                </div>
+                <div id="priorityCard" class="card">
+                  <h3 id="priorityTitle">
+                    Sprint Activity by Priority
+                  </h3>
+                  <div
+                    id="priorityDescription"
+                    class="chart-description"
+                  ></div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr id="priorityHeader"></tr>
+                      </thead>
+                      <tbody id="priorityRows"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+              <section class="section">
+                <div class="section-header">
+                  <h2>Quality</h2>
+                </div>
+                <div id="qualityKpis" class="kpis"></div>
+                <div id="qualityPriorityCard" class="card">
+                  <h3>Bugs by Priority</h3>
+                  <div
+                    id="qualityPriorityDescription"
+                    class="chart-description"
+                  ></div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Priority</th>
+                          <th id="qualityOpenedHeader">
+                            Bugs Opened
+                          </th>
+                          <th id="qualityClosedHeader">
+                            Bugs Closed
+                          </th>
+                          <th id="qualityRatioHeader">
+                            C/R
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="qualityPriorityRows"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            </main>
+            <div
+              id="drilldownBackdrop"
+              class="modal-backdrop hidden"
+            >
+              <div class="modal">
+                <div class="modal-header">
+                  <div>
+                    <h2 id="drilldownTitle"></h2>
+                    <div
+                      id="drilldownSubtitle"
+                      class="modal-subtitle"
+                    ></div>
+                  </div>
+                  <button
+                    id="closeDrilldown"
+                    class="close-button"
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div class="modal-body">
+                  <table class="drilldown-table">
+                    <thead>
+                      <tr id="drilldownHeader"></tr>
+                    </thead>
+                    <tbody id="drilldownRows"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <script>
+              let projectData = null;
+              const cacheVersion = Date.now();
+              const TYPE_COLORS = [
+                "#2499e8",
+                "#49b94f",
+                "#0f5f98",
+                "#7bc8f6",
+                "#8fd694",
+                "#506784",
+                "#b8dff7",
+                "#86a9c4",
+                "#a7d9aa",
+                "#36566f",
+                "#5ab5ef",
+                "#72c879"
+              ];
+              function escapeHtml(value) {
+                return String(value ?? "")
+                  .replaceAll("&", "&amp;")
+                  .replaceAll("<", "&lt;")
+                  .replaceAll(">", "&gt;")
+                  .replaceAll('"', "&quot;")
+                  .replaceAll("'", "&#039;");
+              }
+              function cap(name) {
+                return projectData?.capabilities?.[name]?.available === true;
+              }
+              function issueId(issue) {
+                return `${issue.repository}#${issue.number}`;
+              }
+              function isClosed(issue) {
+                return String(issue.state || "").toUpperCase() === "CLOSED";
+              }
+              function within(date, sprint) {
+                return Boolean(
+                  date
+                  && date >= sprint.start
+                  && date <= sprint.end
+                );
+              }
+              function localToday() {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, "0");
+                const day = String(now.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+              }
+              function addDays(dateString, days) {
+                const [year, month, day] = dateString.split("-").map(Number);
+                const date = new Date(Date.UTC(year, month - 1, day));
+                date.setUTCDate(date.getUTCDate() + days);
+                return date.toISOString().slice(0, 10);
+              }
+              function selectedScope() {
+                if (!projectData) {
+                  return null;
+                }
+                const value = document.getElementById("sprintSelect").value;
+                if (value === "project") {
+                  return {
+                    mode: "project",
+                    name: "Entire Project"
+                  };
+                }
+                if (value.startsWith("sprint:")) {
+                  const index = Number(value.split(":")[1]);
+                  const sprint = projectData.sprints[index];
+                  if (!sprint) {
+                    return null;
+                  }
+                  return {
+                    mode: "sprint",
+                    ...sprint
+                  };
+                }
+                return null;
+              }
+              function isProjectMode(scope) {
+                return scope && scope.mode === "project";
+              }
+              function sumLoe(issues) {
+                return issues.reduce((total, issue) => {
+                  const value = Number(issue.loe);
+                  return total + (Number.isFinite(value) ? value : 0);
+                }, 0);
+              }
+              function formatDays(value) {
+                const numeric = Number(value);
+                return (
+                  (Number.isFinite(numeric) ? numeric : 0)
+                    .toFixed(1)
+                    .replace(/\.0$/, "")
+                  + " days"
+                );
+              }
+              function transitions(issue) {
+                return (issue.sprintTransitions || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.createdAt || a.date)
+                        .localeCompare(String(b.createdAt || b.date))
+                  );
+              }
+              function isSprint(value) {
+                return /^sprint\b/i.test(
+                  String(value || "").trim()
+                );
+              }
+              function entriesIntoSprint(issue, sprint) {
+                return transitions(issue).filter(
+                  event => event.to === sprint.name
+                );
+              }
+              function exitsFromSprint(issue, sprint) {
+                return transitions(issue).filter(
+                  event =>
+                    event.from === sprint.name
+                    && event.to !== sprint.name
+                );
+              }
+              function firstEntry(issue, sprint) {
+                const entries = entriesIntoSprint(issue, sprint);
+                return entries.length ? entries[0] : null;
+              }
+              function committedIssues(sprint) {
+                return projectData.issues.filter(
+                  issue => Boolean(firstEntry(issue, sprint))
+                );
+              }
+              function carriedOverIssues(sprint) {
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
+                  return Boolean(
+                    entry
+                    && isSprint(entry.from)
+                    && entry.from !== sprint.name
+                  );
+                });
+              }
+              function lateCutoff(sprint) {
+                return addDays(sprint.start, 1);
+              }
+              function addedLateIssues(sprint) {
+                const cutoff = lateCutoff(sprint);
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
+                  return Boolean(
+                    entry
+                    && entry.date > cutoff
+                  );
+                });
+              }
+              function removedIssues(sprint) {
+                return committedIssues(sprint).filter(issue => {
+                  const entry = firstEntry(issue, sprint);
+                  if (!entry) {
+                    return false;
+                  }
+                  return exitsFromSprint(issue, sprint).some(
+                    exit =>
+                      String(exit.createdAt || exit.date)
+                      > String(entry.createdAt || entry.date)
+                  );
+                });
+              }
+              function sprintEntryLabel(issue, sprint) {
+                const entry = firstEntry(issue, sprint);
+                if (!entry) {
+                  return "";
+                }
+                const late = entry.date > lateCutoff(sprint);
+                if (isSprint(entry.from)) {
+                  return late
+                    ? "Late Carryover"
+                    : "Carryover";
+                }
+                return late
+                  ? "Added Late"
+                  : "Committed";
+              }
+              function carriedFrom(issue, sprint) {
+                const entry = firstEntry(issue, sprint);
+                if (!entry || !isSprint(entry.from)) {
+                  return "";
+                }
+                return entry.from;
+              }
+              function totalIssues(scope, priority = null) {
+                if (isProjectMode(scope)) {
+                  return projectData.issues.filter(
+                    issue =>
+                      priority === null
+                      || issue.priority === priority
+                  );
+                }
+                return committedIssues(scope).filter(
+                  issue =>
+                    priority === null
+                    || issue.priority === priority
+                );
+              }
+              function openedIssues(scope, priority = null) {
+                if (isProjectMode(scope)) {
+                  return totalIssues(scope, priority);
+                }
+                return projectData.issues.filter(
+                  issue =>
+                    (
+                      priority === null
+                      || issue.priority === priority
+                    )
+                    && within(issue.opened, scope)
+                );
+              }
+              function openIssues(scope, priority = null) {
+                return totalIssues(scope, priority).filter(
+                  issue => !isClosed(issue)
+                );
+              }
+              function closedIssues(scope, priority = null) {
+                if (isProjectMode(scope)) {
+                  return totalIssues(scope, priority).filter(isClosed);
+                }
+                return projectData.issues.filter(
+                  issue =>
+                    (
+                      priority === null
+                      || issue.priority === priority
+                    )
+                    && within(issue.closed, scope)
+                );
+              }
+              function completedCommittedIssues(sprint) {
+                const ids = new Set(
+                  committedIssues(sprint).map(issueId)
+                );
+                return closedIssues(sprint).filter(
+                  issue => ids.has(issueId(issue))
+                );
+              }
+              function completionRate(scope) {
+                if (isProjectMode(scope)) {
+                  const total = totalIssues(scope);
+                  if (!total.length) {
+                    return 0;
+                  }
+                  return (
+                    closedIssues(scope).length
+                    / total.length
+                    * 100
+                  );
+                }
+                const committed = committedIssues(scope);
+                if (!committed.length) {
+                  return 0;
+                }
+                return (
+                  completedCommittedIssues(scope).length
+                  / committed.length
+                  * 100
+                );
+              }
+              function meaningfulStatusEvents(issue) {
+                const events = (issue.statusEvents || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.date || "")
+                        .localeCompare(String(b.date || ""))
+                  );
+                if (!events.length) {
+                  return [];
+                }
+                return events.slice(1);
+              }
+              function sprintStatuses(issue, sprint) {
+                if (!firstEntry(issue, sprint)) {
+                  return null;
+                }
+                const events = (issue.statusEvents || [])
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      String(a.date || "")
+                        .localeCompare(String(b.date || ""))
+                  );
+                const statuses = new Set();
+                // Determine which status the issue was already in
+                // when the sprint started.
+                const lastEventBeforeSprint = events
+                  .filter(event => event.date < sprint.start)
+                  .at(-1);
+                if (lastEventBeforeSprint?.status) {
+                  statuses.add(lastEventBeforeSprint.status);
+                } else {
+                  // If there is no earlier status event, use the previous
+                  // status from the first transition during/after the sprint.
+                  const firstRelevantEvent = events.find(
+                    event =>
+                      event.date >= sprint.start
+                      && event.previousStatus
+                  );
+                  if (firstRelevantEvent?.previousStatus) {
+                    statuses.add(firstRelevantEvent.previousStatus);
+                  } else if (issue.currentStatus) {
+                    statuses.add(issue.currentStatus);
+                  }
+                }
+                // Include every status the issue reached during the sprint,
+                // even if the issue was not added to the sprint until later.
+                events.forEach(event => {
+                  if (
+                    event.date >= sprint.start
+                    && event.date <= sprint.end
+                    && event.status
+                  ) {
+                    statuses.add(event.status);
+                  }
+                });
+                return statuses;
+              }
+              function statusIssues(scope, status, priority = null) {
+                if (isProjectMode(scope)) {
+                  return projectData.issues.filter(
+                    issue =>
+                      (
+                        priority === null
+                        || issue.priority === priority
+                      )
+                      && issue.currentStatus === status
+                  );
+                }
+                return projectData.issues.filter(issue => {
+                  if (
+                    priority !== null
+                    && issue.priority !== priority
+                  ) {
+                    return false;
+                  }
+                  const assignedStatuses = sprintStatuses(issue, scope);
+                  if (assignedStatuses) {
+                    return assignedStatuses.has(status);
+                  }
+                  return meaningfulStatusEvents(issue)
+                    .filter(event => within(event.date, scope))
+                    .some(event => event.status === status);
+                });
+              }
+              function statusDates(issue, status) {
+                return (issue.statusEvents || [])
+                  .filter(event => event.status === status)
+                  .map(event => event.date)
+                  .sort();
+              }
+              function workedIssues(scope) {
+                if (isProjectMode(scope)) {
+                  return projectData.issues;
+                }
+                const ids = new Set();
+                committedIssues(scope).forEach(
+                  issue => ids.add(issueId(issue))
+                );
+                projectData.issues.forEach(issue => {
+                  if (within(issue.closed, scope)) {
+                    ids.add(issueId(issue));
+                  }
+                  meaningfulStatusEvents(issue).forEach(event => {
+                    if (within(event.date, scope)) {
+                      ids.add(issueId(issue));
+                    }
+                  });
+                });
+                return projectData.issues.filter(
+                  issue => ids.has(issueId(issue))
+                );
+              }
+              function isBug(issue) {
+                return (
+                  String(issue.issueType || "").toLowerCase()
+                  === "bug"
+                );
+              }
+              function bugsOpened(scope, priority = null) {
+                if (isProjectMode(scope)) {
+                  return totalIssues(scope, priority).filter(isBug);
+                }
+                return openedIssues(scope, priority).filter(isBug);
+              }
+              function bugsClosed(scope, priority = null) {
+                return closedIssues(scope, priority).filter(isBug);
+              }
+              function addKpi(
+                container,
+                label,
+                value,
+                issues = null,
+                subtext = "",
+                tooltip = ""
+              ) {
+                const card = document.createElement("div");
+                card.className = issues
+                  ? "card clickable"
+                  : "card";
+                card.innerHTML = `
+                  <div class="label">
+                    ${escapeHtml(label)}
+                    ${
+                      tooltip
+                        ? `
+                          <span
+                            class="info-wrap"
+                            tabindex="0"
+                            aria-label="${escapeHtml(tooltip)}"
+                          >
+                            <span class="info-icon">?</span>
+                            <span class="info-tooltip">
+                              ${escapeHtml(tooltip)}
+                            </span>
+                          </span>
+                        `
+                        : ""
+                    }
+                  </div>
+                  <div class="number">
+                    ${escapeHtml(value)}
+                  </div>
+                  ${
+                    subtext
+                      ? `
+                        <div class="subnumber">
+                          ${escapeHtml(subtext)}
+                        </div>
+                      `
+                      : ""
+                  }
+                `;
+                if (issues) {
+                  card.onclick = () =>
+                    openDrilldown(
+                      label,
+                      selectedScope(),
+                      issues
+                    );
+                }
+                container.appendChild(card);
+              }
+              function renderOverview(scope) {
+                const container = document.getElementById("overviewKpis");
+                container.innerHTML = "";
+                if (isProjectMode(scope)) {
+                  const total = totalIssues(scope);
+                  const open = openIssues(scope);
+                  const closed = closedIssues(scope);
+                  addKpi(
+                    container,
+                    "Total Issues",
+                    total.length,
+                    total,
+                    "",
+                    "All issues assigned to the project."
+                  );
+                  addKpi(
+                    container,
+                    "Open",
+                    open.length,
+                    open,
+                    "",
+                    "Issues that are currently open."
+                  );
+                  addKpi(
+                    container,
+                    "Closed",
+                    closed.length,
+                    closed,
+                    "",
+                    "Issues that are currently closed."
+                  );
+                  addKpi(
+                    container,
+                    "Completion",
+                    completionRate(scope).toFixed(0) + "%",
+                    null,
+                    "",
+                    "Percentage of issues that have been closed, of all issues assigned to the project."
+                  );
+                } else {
+                  const opened = openedIssues(scope);
+                  const committed = committedIssues(scope);
+                  const carried = carriedOverIssues(scope);
+                  const late = addedLateIssues(scope);
+                  const removed = removedIssues(scope);
+                  const closed = closedIssues(scope);
+                  addKpi(
+                    container,
+                    "Opened",
+                    opened.length,
+                    opened,
+                    "",
+                    "All new issues created during the sprint."
+                  );
+                  addKpi(
+                    container,
+                    "Committed",
+                    committed.length,
+                    committed,
+                    cap("loe")
+                      ? `${formatDays(sumLoe(committed))} LOE`
+                      : "",
+                    "Issues added to the sprint at any point, including carryover and late additions."
+                  );
+                  addKpi(
+                    container,
+                    "Carried Over",
+                    carried.length,
+                    carried,
+                    cap("loe")
+                      ? `${formatDays(sumLoe(carried))} LOE`
+                      : "",
+                    "Issues moved directly from another sprint into this sprint."
+                  );
+                  addKpi(
+                    container,
+                    "Added Late",
+                    late.length,
+                    late,
+                    cap("loe")
+                      ? `${formatDays(sumLoe(late))} LOE`
+                      : "",
+                    "Issues added after the first day of the sprint."
+                  );
+                  addKpi(
+                    container,
+                    "Removed",
+                    removed.length,
+                    removed,
+                    "",
+                    "Issues committed to the sprint and later moved out of it."
+                  );
+                  addKpi(
+                    container,
+                    "Closed",
+                    closed.length,
+                    closed,
+                    "",
+                    "All issues closed during the sprint."
+                  );
+                  addKpi(
+                    container,
+                    "Completion",
+                    completionRate(scope).toFixed(0) + "%",
+                    null,
+                    "",
+                    "Percentage of committed issues that were closed during the sprint. Closed issues that were not assigned to the sprint do not contribute to this metric."
+                  );
+                }
+                renderStatuses(scope);
+                renderFlow(scope);
+                renderType(scope);
+                renderPriority(scope);
+              }
+              function renderStatuses(scope) {
+                const row = document.getElementById("statusRow");
+                row.innerHTML = "";
+                projectData.statuses.forEach(status => {
+                  const issues = statusIssues(scope, status);
+                  const button = document.createElement("button");
+                  button.className = "status-chip";
+                  button.innerHTML = `
+                    ${escapeHtml(status)}
+                    <strong>${issues.length}</strong>
+                  `;
+                  button.onclick = () =>
+                    openDrilldown(
+                      status,
+                      scope,
+                      issues
+                    );
+                  row.appendChild(button);
+                });
+              }
+              const flowChart = new Chart(
+                document.getElementById("flowChart"),
+                {
+                  type: "bar",
+                  data: {
+                    labels: [],
+                    datasets: [
+                      {
+                        label: "Assigned to Sprint",
+                        data: [],
+                        backgroundColor: "#2499e8",
+                        borderWidth: 0
+                      },
+                      {
+                        label: "Not Assigned to Sprint",
+                        data: [],
+                        backgroundColor: "#f58220",
+                        borderWidth: 0
+                      }
+                    ]
+                  },
+                  options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    resizeDelay: 100,
+                    plugins: {
+                      legend: {
+                        display: true,
+                        position: "bottom"
+                      }
+                    },
+                    scales: {
+                      x: {
+                        stacked: true
+                      },
+                      y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: {
+                          precision: 0
+                        }
+                      }
+                    },
+                    onClick(event, elements) {
+                      if (!elements.length) {
+                        return;
+                      }
+                      const element = elements[0];
+                      const descriptor =
+                        flowChart._descriptors[element.index];
+                      if (!descriptor) {
+                        return;
+                      }
+                      if (descriptor.issues) {
+                        openDrilldown(
+                          descriptor.label,
+                          selectedScope(),
+                          descriptor.issues
+                        );
+                        return;
+                      }
+                      const issues =
+                        element.datasetIndex === 0
+                          ? descriptor.assigned
+                          : descriptor.unassigned;
+                      openDrilldown(
+                        descriptor.label
+                        + (
+                          element.datasetIndex === 0
+                            ? " · Assigned to Sprint"
+                            : " · Not Assigned to Sprint"
+                        ),
+                        selectedScope(),
+                        issues
+                      );
+                    }
+                  }
+                }
+              );
+              function renderFlow(scope) {
+                const title = document.getElementById("flowTitle");
+                const description =
+                  document.getElementById("flowDescription");
+                title.textContent =
+                  isProjectMode(scope)
+                    ? "Project Status"
+                    : "All Sprint Activity";
+                description.textContent =
+                  isProjectMode(scope)
+                    ? "Current status of all issues assigned to the project. Each issue is counted once."
+                    : "All issue activity during the sprint. Counts reflect how many issues were in that status at any point during the sprint.";
+                if (isProjectMode(scope)) {
+                  const descriptors = [
+                    {
+                      label: "Open",
+                      issues: openIssues(scope)
+                    },
+                    ...projectData.statuses.map(
+                      status => ({
+                        label: status,
+                        issues: statusIssues(scope, status)
+                      })
+                    ),
+                    {
+                      label: "Closed",
+                      issues: closedIssues(scope)
+                    }
+                  ];
+                  flowChart._descriptors = descriptors;
+                  flowChart.data.labels = descriptors.map(
+                    item => item.label
+                  );
+                  flowChart.data.datasets = [
+                    {
+                      label: "Issues",
+                      data: descriptors.map(
+                        item => item.issues.length
+                      ),
+                      backgroundColor: "#2499e8",
+                      borderWidth: 0
+                    }
+                  ];
+                  flowChart.update();
+                  return;
+                }
+                const committedIds = new Set(
+                  committedIssues(scope).map(issueId)
+                );
+                function splitIssues(issues) {
+                  return {
+                    assigned: issues.filter(
+                      issue =>
+                        committedIds.has(issueId(issue))
+                    ),
+                    unassigned: issues.filter(
+                      issue =>
+                        !committedIds.has(issueId(issue))
+                    )
+                  };
+                }
+                const descriptors = [];
+                const opened = splitIssues(
+                  openedIssues(scope)
+                );
+                descriptors.push({
+                  label: "Opened",
+                  assigned: opened.assigned,
+                  unassigned: opened.unassigned
+                });
+                projectData.statuses.forEach(status => {
+                  const split = splitIssues(
+                    statusIssues(scope, status)
+                  );
+                  descriptors.push({
+                    label: status,
+                    assigned: split.assigned,
+                    unassigned: split.unassigned
+                  });
+                });
+                const closed = splitIssues(
+                  closedIssues(scope)
+                );
+                descriptors.push({
+                  label: "Closed",
+                  assigned: closed.assigned,
+                  unassigned: closed.unassigned
+                });
+                flowChart._descriptors = descriptors;
+                flowChart.data.labels = descriptors.map(
+                  item => item.label
+                );
+                flowChart.data.datasets = [
+                  {
+                    label: "Assigned to Sprint",
+                    data: descriptors.map(
+                      item => item.assigned.length
+                    ),
+                    backgroundColor: "#2499e8",
+                    borderWidth: 0
+                  },
+                  {
+                    label: "Not Assigned to Sprint",
+                    data: descriptors.map(
+                      item => item.unassigned.length
+                    ),
+                    backgroundColor: "#f58220",
+                    borderWidth: 0
+                  }
+                ];
+                flowChart.update();
+              }
+              const typeChart = new Chart(
+                document.getElementById("typeChart"),
+                {
+                  type: "doughnut",
+                  data: {
+                    labels: [],
+                    datasets: [{
+                      data: [],
+                      backgroundColor: [],
+                      borderColor: "#ffffff",
+                      borderWidth: 2,
+                      hoverOffset: 8
+                    }]
+                  },
+                  options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "58%",
+                    plugins: {
+                      legend: {
+                        position: "bottom",
+                        labels: {
+                          usePointStyle: true,
+                          pointStyle: "circle",
+                          padding: 14
+                        }
+                      }
+                    },
+                    onClick(event, elements) {
+                      if (!elements.length) {
+                        return;
+                      }
+                      const scope = selectedScope();
+                      const type =
+                        typeChart.data.labels[elements[0].index];
+                      const issues = workedIssues(scope)
+                        .filter(
+                          issue =>
+                            (issue.issueType || "Unspecified")
+                            === type
+                        );
+                      openDrilldown(
+                        type,
+                        scope,
+                        issues
+                      );
+                    }
+                  }
+                }
+              );
+              function renderType(scope) {
+                const description =
+                  document.getElementById("typeDescription");
+                description.textContent =
+                  isProjectMode(scope)
+                    ? "All issues by issue type. Each issue is counted once."
+                    : "Issues worked on during the sprint by issue type. Each issue is counted once.";
+                const counts = {};
+                workedIssues(scope).forEach(issue => {
+                  const type =
+                    issue.issueType || "Unspecified";
+                  counts[type] =
+                    (counts[type] || 0) + 1;
+                });
+                const values = Object
+                  .entries(counts)
+                  .sort(
+                    (a, b) => b[1] - a[1]
+                  );
+                typeChart.data.labels = values.map(
+                  value => value[0]
+                );
+                typeChart.data.datasets[0].data = values.map(
+                  value => value[1]
+                );
+                typeChart.data.datasets[0].backgroundColor =
+                  values.map(
+                    (value, index) =>
+                      TYPE_COLORS[
+                        index % TYPE_COLORS.length
+                      ]
+                  );
+                typeChart.update();
+              }
+              function renderPriority(scope) {
+                const card = document.getElementById("priorityCard");
+                const title = document.getElementById("priorityTitle");
+                const description =
+                  document.getElementById("priorityDescription");
+                title.textContent =
+                  isProjectMode(scope)
+                    ? "Status by Priority"
+                    : "Sprint Activity by Priority";
+                description.textContent =
+                  isProjectMode(scope)
+                    ? "Current issue statuses by priority. Each issue is counted once."
+                    : "All issue activity by status and priority. Counts reflect how many issues were in that status at any point during the sprint.";
+                const priorities = (
+                  projectData.priorities || []
+                ).filter(Boolean);
+                if (!priorities.length) {
+                  card.classList.add("hidden");
+                  return;
+                }
+                card.classList.remove("hidden");
+                const header =
+                  document.getElementById("priorityHeader");
+                header.innerHTML = "";
+                const firstMetric =
+                  isProjectMode(scope)
+                    ? "Total"
+                    : "Opened";
+                [
+                  "Priority",
+                  firstMetric,
+                  ...projectData.statuses,
+                  "Closed"
+                ].forEach(heading => {
+                  const th = document.createElement("th");
+                  th.textContent = heading;
+                  header.appendChild(th);
+                });
+                const body =
+                  document.getElementById("priorityRows");
+                body.innerHTML = "";
+                priorities.forEach(priority => {
+                  const row = document.createElement("tr");
+                  const first = document.createElement("td");
+                  first.innerHTML =
+                    `<strong>${escapeHtml(priority)}</strong>`;
+                  row.appendChild(first);
+                  function addMetric(issues, label) {
+                    const td = document.createElement("td");
+                    td.className = "metric-cell";
+                    td.textContent = issues.length;
+                    td.onclick = () =>
+                      openDrilldown(
+                        `${priority} · ${label}`,
+                        scope,
+                        issues
+                      );
+                    row.appendChild(td);
+                  }
+                  if (isProjectMode(scope)) {
+                    addMetric(
+                      totalIssues(scope, priority),
+                      "Total"
+                    );
+                  } else {
+                    addMetric(
+                      openedIssues(scope, priority),
+                      "Opened"
+                    );
+                  }
+                  projectData.statuses.forEach(status => {
+                    addMetric(
+                      statusIssues(
+                        scope,
+                        status,
+                        priority
+                      ),
+                      status
+                    );
+                  });
+                  addMetric(
+                    closedIssues(scope, priority),
+                    "Closed"
+                  );
+                  body.appendChild(row);
+                });
+              }
+              function renderQuality(scope) {
+                const container =
+                  document.getElementById("qualityKpis");
+                container.innerHTML = "";
+                const opened = bugsOpened(scope);
+                const closed = bugsClosed(scope);
+                addKpi(
+                  container,
+                  isProjectMode(scope)
+                    ? "Total Bugs"
+                    : "Bugs Opened",
+                  opened.length,
+                  opened,
+                  "",
+                  isProjectMode(scope)
+                    ? "All open bugs."
+                    : "All bugs opened during the sprint."
+                );
+                addKpi(
+                  container,
+                  isProjectMode(scope)
+                    ? "Closed Bugs"
+                    : "Bugs Closed",
+                  closed.length,
+                  closed,
+                  "",
+                  isProjectMode(scope)
+                    ? "All closed bugs."
+                    : "All bugs closed during the sprint."
+                );
+                if (isProjectMode(scope)) {
+                  addKpi(
+                    container,
+                    "Bug Completion",
+                    (
+                      opened.length
+                        ? (
+                            closed.length
+                            / opened.length
+                            * 100
+                          ).toFixed(0) + "%"
+                        : "0%"
+                    ),
+                    null,
+                    "",
+                    "Percentage of closed bugs, of total bugs assigned to project."
+                  );
+                } else {
+                  addKpi(
+                    container,
+                    "Bug C/R",
+                    (
+                      closed.length
+                        ? (
+                            opened.length
+                            / closed.length
+                          ).toFixed(2) + "x"
+                        : "—"
+                    ),
+                    null,
+                    "",
+                    "Ratio of new bugs opened to bugs closed during the sprint. Above 1.0 means more bugs were created than closed."
+                  );
+                }
+                renderQualityPriority(scope);
+              }
+              function renderQualityPriority(scope) {
+                document
+                  .getElementById("qualityOpenedHeader")
+                  .textContent =
+                    isProjectMode(scope)
+                      ? "Total Bugs"
+                      : "Bugs Opened";
+                document
+                  .getElementById("qualityClosedHeader")
+                  .textContent =
+                    isProjectMode(scope)
+                      ? "Closed Bugs"
+                      : "Bugs Closed";
+                document
+                  .getElementById("qualityRatioHeader")
+                  .textContent =
+                    isProjectMode(scope)
+                      ? "% Closed"
+                      : "C/R";
+                const card =
+                  document.getElementById("qualityPriorityCard");
+                if (!projectData.priorities.length) {
+                  card.classList.add("hidden");
+                  return;
+                }
+                card.classList.remove("hidden");
+                document
+                  .getElementById("qualityPriorityDescription")
+                  .textContent =
+                    isProjectMode(scope)
+                      ? "All bugs created and closed, by priority."
+                      : "All bugs created and closed during the sprint, by priority.";
+                const body =
+                  document.getElementById("qualityPriorityRows");
+                body.innerHTML = "";
+                projectData.priorities.forEach(priority => {
+                  const opened = bugsOpened(
+                    scope,
+                    priority
+                  );
+                  const closed = bugsClosed(
+                    scope,
+                    priority
+                  );
+                  const row = document.createElement("tr");
+                  const first = document.createElement("td");
+                  first.innerHTML =
+                    `<strong>${escapeHtml(priority)}</strong>`;
+                  row.appendChild(first);
+                  function addCell(value, issues = null) {
+                    const td = document.createElement("td");
+                    td.textContent = value;
+                    if (issues) {
+                      td.className = "metric-cell";
+                      td.onclick = () =>
+                        openDrilldown(
+                          `${priority} Bugs`,
+                          scope,
+                          issues
+                        );
+                    }
+                    row.appendChild(td);
+                  }
+                  addCell(
+                    opened.length,
+                    opened
+                  );
+                  addCell(
+                    closed.length,
+                    closed
+                  );
+                  addCell(
+                    isProjectMode(scope)
+                      ? (
+                          opened.length
+                            ? (
+                                closed.length
+                                / opened.length
+                                * 100
+                              ).toFixed(0) + "%"
+                            : "0%"
+                        )
+                      : (
+                          closed.length
+                            ? (
+                                opened.length
+                                / closed.length
+                              ).toFixed(2) + "x"
+                            : "—"
+                        )
+                  );
+                  body.appendChild(row);
+                });
+              }
+              function openDrilldown(
+                title,
+                scope,
+                issues
+              ) {
+                document
+                  .getElementById("drilldownTitle")
+                  .textContent = title;
+                document
+                  .getElementById("drilldownSubtitle")
+                  .textContent =
+                    `${scope.name} · `
+                    + `${issues.length} issue`
+                    + (
+                      issues.length === 1
+                        ? ""
+                        : "s"
+                    );
+                const columns = [
+                  {
+                    label: "Issue",
+                    render: issue => `
+                      <a
+                        class="issue-link"
+                        href="${escapeHtml(issue.url)}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        ${escapeHtml(issue.repository)}#${issue.number}
+                      </a>
+                    `
+                  },
+                  {
+                    label: "Title",
+                    className: "title-column",
+                    render: issue =>
+                      escapeHtml(issue.title)
+                  },
+                  {
+                    label: "Type",
+                    render: issue =>
+                      escapeHtml(issue.issueType)
+                  },
+                  {
+                    label: "Priority",
+                    render: issue =>
+                      escapeHtml(issue.priority)
+                  },
+                  {
+                    label: "Current Status",
+                    render: issue =>
+                      escapeHtml(
+                        issue.currentStatus || ""
+                      )
+                  }
+                ];
+                if (cap("size")) {
+                  columns.push({
+                    label: "Size",
+                    render: issue =>
+                      escapeHtml(issue.size || "")
+                  });
+                }
+                if (cap("loe")) {
+                  columns.push({
+                    label: "LOE",
+                    render: issue =>
+                      (
+                        issue.loe === null
+                        || issue.loe === undefined
+                      )
+                        ? ""
+                        : formatDays(issue.loe)
+                  });
+                }
+                if (!isProjectMode(scope)) {
+                  columns.push({
+                    label: "Sprint Entry",
+                    render: issue =>
+                      escapeHtml(
+                        sprintEntryLabel(issue, scope)
+                      )
+                  });
+                  columns.push({
+                    label: "Carried From",
+                    render: issue =>
+                      escapeHtml(
+                        carriedFrom(issue, scope)
+                      )
+                  });
+                }
+                columns.push({
+                  label: "Open Date",
+                  render: issue =>
+                    escapeHtml(issue.opened || "")
+                });
+                projectData.statuses.forEach(status => {
+                  columns.push({
+                    label: status,
+                    render: issue =>
+                      statusDates(issue, status)
+                        .map(escapeHtml)
+                        .join("<br>")
+                  });
+                });
+                columns.push({
+                  label: "Close Date",
+                  render: issue =>
+                    escapeHtml(issue.closed || "")
+                });
+                const header =
+                  document.getElementById("drilldownHeader");
+                header.innerHTML = "";
+                columns.forEach(column => {
+                  const th = document.createElement("th");
+                  th.textContent = column.label;
+                  header.appendChild(th);
+                });
+                const body =
+                  document.getElementById("drilldownRows");
+                body.innerHTML = "";
+                issues.forEach(issue => {
+                  const row = document.createElement("tr");
+                  columns.forEach(column => {
+                    const td = document.createElement("td");
+                    if (column.className) {
+                      td.className = column.className;
+                    }
+                    td.innerHTML = column.render(issue);
+                    row.appendChild(td);
+                  });
+                  body.appendChild(row);
+                });
+                document
+                  .getElementById("drilldownBackdrop")
+                  .classList
+                  .remove("hidden");
+              }
+              function closeDrilldown() {
+                document
+                  .getElementById("drilldownBackdrop")
+                  .classList
+                  .add("hidden");
+              }
+              document
+                .getElementById("closeDrilldown")
+                .onclick = closeDrilldown;
+              document
+                .getElementById("drilldownBackdrop")
+                .addEventListener(
+                  "click",
+                  event => {
+                    if (
+                      event.target.id
+                      === "drilldownBackdrop"
+                    ) {
+                      closeDrilldown();
+                    }
+                  }
+                );
+              document.addEventListener(
+                "keydown",
+                event => {
+                  if (event.key === "Escape") {
+                    closeDrilldown();
+                  }
+                }
+              );
+              function renderAll() {
+                const scope = selectedScope();
+                if (!scope) {
+                  return;
+                }
+                renderOverview(scope);
+                renderQuality(scope);
+              }
+              // Load only the months required for the selected sprint.
+              // Entire Project loads all months to preserve existing totals.
+              let selectedProject = null;
+              let projectLoadSequence = 0;
+              const historyCache = new Map();
+              function monthsBetween(start, end) {
+                const months = [];
+                const cursor = new Date(`${start.slice(0,7)}-01T00:00:00Z`);
+                const last = end.slice(0,7);
+                while (cursor.toISOString().slice(0,7) <= last) {
+                  months.push(cursor.toISOString().slice(0,7));
+                  cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+                }
+                return months;
+              }
+              async function loadSelectedHistory() {
+                if (!projectData) return;
+                const sequence = ++projectLoadSequence;
+                const selection = document.getElementById('sprintSelect').value;
+                const available = projectData.historyMonths || [];
+                let months = available;
+                if (selection.startsWith('sprint:')) {
+                  const sprint = projectData.sprints[Number(selection.split(':')[1])];
+                  if (!sprint) return;
+                  // Include the full sprint and all changes through its end.
+                  // The first month's baseline supplies earlier assignments.
+                  months = monthsBetween(sprint.start, sprint.end)
+                    .filter(month => available.includes(month));
+                }
+                try {
+                  const files = await Promise.all(months.map(async month => {
+                    const path = `data/${selectedProject.slug}/history/${month}.json?v=${cacheVersion}`;
+                    if (!historyCache.has(path)) {
+                      historyCache.set(path, fetch(path, {cache:'no-store'}).then(response => {
+                        if (!response.ok) throw new Error(`Could not load history: ${month}`);
+                        return response.json();
+                      }).catch(error => { historyCache.delete(path); throw error; }));
+                    }
+                    return historyCache.get(path);
+                  }));
+                  if (sequence !== projectLoadSequence) return;
+                  const issueMap = new Map(projectData.issues.map(issue => [issueId(issue), issue]));
+                  for (const issue of projectData.issues) {
+                    issue.sprintTransitions = [];
+                    issue.statusEvents = [];
+                  }
+                  // The baseline is the latest event before the first
+                  // requested month, not a substitute for events in it.
+                  if (files.length && files[0].__baseline) {
+                    for (const [key, baseline] of Object.entries(files[0].__baseline)) {
+                      const issue = issueMap.get(key);
+                      if (!issue) continue;
+                      for (const field of ('sprintTransitions', 'statusEvents')) {
+                        if (baseline[field]) issue[field].push(baseline[field]);
+                      }
+                    }
+                  }
+                  for (const file of files) {
+                    for (const [key, events] of Object.entries(file)) {
+                      if (key === '__baseline') continue;
+                      const issue = issueMap.get(key);
+                      if (!issue) continue;
+                      issue.sprintTransitions.push(...(events.sprintTransitions || []));
+                      issue.statusEvents.push(...(events.statusEvents || []));
+                    }
+                  }
+                  for (const issue of projectData.issues) {
+                    issue.sprintTransitions.sort((a,b) => a.createdAt.localeCompare(b.createdAt));
+                    issue.statusEvents.sort((a,b) => a.date.localeCompare(b.date));
+                  }
+                  renderAll();
+                } catch (error) {
+                  if (sequence === projectLoadSequence) console.error('Sprint history load failed:', error);
+                }
+              }
+              function loadProject(project) {
+                selectedProject = project;
+                const sequence = ++projectLoadSequence;
+                fetch(
+                  `data/${project.slug}.json?v=${cacheVersion}`,
+                  {
+                    cache: "no-store"
+                  }
+                )
+                .then(response => {
+                  if (!response.ok) {
+                    throw new Error(
+                      "Could not load project data."
+                    );
+                  }
+                  return response.json();
+                })
+                .then(data => {
+                  if (sequence !== projectLoadSequence) return;
+                  projectData = data;
+                  const sprintSelect =
+                    document.getElementById("sprintSelect");
+                  sprintSelect.innerHTML = "";
+                  const projectOption =
+                    document.createElement("option");
+                  projectOption.value = "project";
+                  projectOption.textContent = "Entire Project";
+                  sprintSelect.appendChild(projectOption);
+                  data.sprints.forEach(
+                    (sprint, index) => {
+                      const option =
+                        document.createElement("option");
+                      option.value = `sprint:${index}`;
+                      option.textContent =
+                        `${sprint.name} · `
+                        + `${sprint.start} – `
+                        + `${sprint.end}`;
+                      sprintSelect.appendChild(option);
+                    }
+                  );
+                  const today = localToday();
+                  const currentIndex =
+                    data.sprints.findIndex(
+                      sprint =>
+                        today >= sprint.start
+                        && today <= sprint.end
+                    );
+                  sprintSelect.value =
+                    currentIndex >= 0
+                      ? `sprint:${currentIndex}`
+                      : "project";
+                  loadSelectedHistory();
+                });
+              }
+              fetch(
+                `data/build.json?v=${cacheVersion}`,
+                {
+                  cache: "no-store"
+                }
+              )
+              .then(
+                response => response.json()
+              )
+              .then(build => {
+                const date = new Date(
+                  build.generatedAt
+                );
+                document
+                  .getElementById("lastUpdated")
+                  .textContent =
+                    "Last updated "
+                    + date.toLocaleString(
+                        undefined,
+                        {
+                          dateStyle: "medium",
+                          timeStyle: "short"
+                        }
+                      );
+              })
+              .catch(() => {
+                document
+                  .getElementById("lastUpdated")
+                  .textContent = "Last updated —";
+              });
+              fetch(
+                `data/projects.json?v=${cacheVersion}`,
+                {
+                  cache: "no-store"
+                }
+              )
+              .then(
+                response => response.json()
+              )
+              .then(projects => {
+                const select =
+                  document.getElementById("projectSelect");
+                projects.forEach(
+                  (project, index) => {
+                    const option =
+                      document.createElement("option");
+                    option.value = index;
+                    option.textContent =
+                      `${project.title} `
+                      + `(${project.issueCount} issues)`;
+                    select.appendChild(option);
+                  }
+                );
+                if (projects.length) {
+                  loadProject(projects[0]);
+                }
+                select.addEventListener(
+                  "change",
+                  event => {
+                    loadProject(
+                      projects[
+                        Number(event.target.value)
+                      ]
+                    );
+                  }
+                );
+              });
+              document
+                .getElementById("sprintSelect")
+                .addEventListener(
+                  "change",
+                  loadSelectedHistory
+                );
+              let resizeTimer = null;
+              window.addEventListener(
+                "resize",
+                () => {
+                  clearTimeout(resizeTimer);
+                  resizeTimer = setTimeout(
+                    () => {
+                      flowChart.resize();
+                      typeChart.resize();
+                    },
+                    150
+                  );
+                }
+              );
+            </script>
+          </body>
+          </html>
+          EOF
+
+      - name: Verify dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking generated dashboard..."
+
+          for check in \
+            "Sprint Analytics" \
+            "Entire Project" \
+            "Opened" \
+            "Committed" \
+            "Carried Over" \
+            "Added Late" \
+            "Removed" \
+            "Work by Type" \
+            "All Sprint Activity" \
+            "Sprint Activity by Priority" \
+            "Project Status" \
+            "Status by Priority" \
+            "Bugs by Priority" \
+            "Assigned to Sprint" \
+            "Not Assigned to Sprint" \
+            "#f58220" \
+            "meaningfulStatusEvents" \
+            "sprintStatuses" \
+            "lastUpdated" \
+            "info-tooltip" \
+            "flowDescription" \
+            "typeDescription" \
+            "priorityDescription" \
+            "qualityPriorityDescription" \
+            "build.json"
+          do
+            grep -q "$check" site/index.html
+          done
+
+          echo "Sprint Analytics dashboard verified."
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

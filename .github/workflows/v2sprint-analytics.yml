@@ -1,0 +1,618 @@
+
+# Builds and publishes a test Sprint Analytics dashboard.
+#
+# Projects are discovered automatically from the DAW Systems organization.
+# New open projects appear after the next workflow run.
+#
+# Includes:
+# - Active and archived project items
+# - Open and closed issues
+# - Current project membership only (removed items are excluded)
+# - Project-specific sprint tracking comments
+# - On-demand loading of individual sprint files
+#
+# This workflow reads GitHub data but does not modify issues or projects.
+# It publishes the dashboard to GitHub Pages in this repository.
+
+name: Sprint Analytics - Test
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sprint-analytics-test
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      OWNER: daw-systems
+
+      # ------------------------------------------------------------
+      # CONFIGURATION
+      #
+      # Projects are discovered automatically. No project list needed.
+      #
+      # ScriptSure #5 used the original sprint-tracker comment format.
+      # Newer projects use sprint-tracker-project-N.
+      # ------------------------------------------------------------
+      LEGACY_PROJECT_NUMBER: "5"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.ACTIONS_APP_ID }}
+          private-key: ${{ secrets.ACTIONS_APP_PRIVATE_KEY }}
+          owner: ${{ env.OWNER }}
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Collect data and build dashboard
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p site/data
+
+          python3 <<'PY'
+          import json, os, re, subprocess
+          from collections import Counter
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OWNER = os.environ["OWNER"]
+          LEGACY = int(os.environ["LEGACY_PROJECT_NUMBER"])
+          OUT = Path("site/data")
+
+          def api(*args):
+              return json.loads(subprocess.check_output(["gh", "api", *args], text=True))
+
+          # ----------------------------------------------------------
+          # DISCOVER OPEN PROJECTS
+          #
+          # Automatically includes newly created organization projects.
+          # Closed projects are excluded.
+          # ----------------------------------------------------------
+          PROJECTS_QUERY = """
+          query($owner:String!, $cursor:String) {
+            organization(login:$owner) {
+              projectsV2(first:100, after:$cursor) {
+                pageInfo { hasNextPage endCursor }
+                nodes { id number title closed }
+              }
+            }
+          }
+          """
+
+          def discover_projects():
+              projects, cursor = [], None
+              while True:
+                  args = ["graphql", "-f", f"query={PROJECTS_QUERY}", "-f", f"owner={OWNER}"]
+                  if cursor: args += ["-f", f"cursor={cursor}"]
+                  data = api(*args)["data"]["organization"]["projectsV2"]
+                  projects.extend(p for p in data["nodes"] if p and not p["closed"])
+                  if not data["pageInfo"]["hasNextPage"]: break
+                  cursor = data["pageInfo"]["endCursor"]
+              return sorted(projects, key=lambda p: p["title"].lower())
+
+          # ----------------------------------------------------------
+          # FETCH PROJECT ITEMS AND SPRINT DEFINITIONS
+          #
+          # ARCHIVED and NOT_ARCHIVED cover both project item states.
+          # Removed items are absent from the project's collection.
+          #
+          # Issue state is deliberately not filtered.
+          # ----------------------------------------------------------
+          PROJECT_QUERY = """
+          query($owner:String!, $number:Int!, $cursor:String) {
+            organization(login:$owner) {
+              projectV2(number:$number) {
+                fields(first:100) {
+                  nodes {
+                    ... on ProjectV2IterationField {
+                      name
+                      configuration {
+                        iterations { id title startDate duration }
+                        completedIterations { id title startDate duration }
+                      }
+                    }
+                  }
+                }
+                items(first:100, after:$cursor, archivedStates:[ARCHIVED,NOT_ARCHIVED]) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    isArchived
+                    content {
+                      ... on Issue {
+                        number title url state createdAt closedAt
+                        repository { nameWithOwner }
+                      }
+                    }
+                    fieldValues(first:100) {
+                      nodes {
+                        ... on ProjectV2ItemFieldIterationValue {
+                          title
+                          field { ... on ProjectV2FieldCommon { name } }
+                        }
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+                          field { ... on ProjectV2FieldCommon { name } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          def fetch_project(number):
+              items, sprints, cursor = [], {}, None
+              while True:
+                  args = ["graphql", "-f", f"query={PROJECT_QUERY}",
+                          "-f", f"owner={OWNER}", "-F", f"number={number}"]
+                  if cursor: args += ["-f", f"cursor={cursor}"]
+                  project = api(*args)["data"]["organization"]["projectV2"]
+                  if project is None: raise RuntimeError(f"Cannot access Project #{number}")
+
+                  for field in project["fields"]["nodes"]:
+                      if not field or field.get("name", "").lower() not in ("sprint", "iteration"): continue
+                      configuration = field.get("configuration") or {}
+                      for iteration in configuration.get("iterations", []) + configuration.get("completedIterations", []):
+                          sprints[iteration["title"]] = iteration
+
+                  items.extend(project["items"]["nodes"])
+                  page = project["items"]["pageInfo"]
+                  if not page["hasNextPage"]: break
+                  cursor = page["endCursor"]
+              return items, sprints
+
+          # ----------------------------------------------------------
+          # READ PROJECT-SPECIFIC SPRINT TRACKING COMMENTS
+          #
+          # Original:
+          # <!-- sprint-tracker:Backlog -> Sprint 190 -->
+          #
+          # New:
+          # <!-- sprint-tracker-project-11:Backlog -> Sprint 190 -->
+          #
+          # Comments are fetched once per issue, even if the issue
+          # belongs to multiple projects.
+          # ----------------------------------------------------------
+          comment_cache = {}
+
+          def get_comments(repo, number):
+              key = (repo, number)
+              if key not in comment_cache:
+                  pages = api("--paginate", "--slurp", f"repos/{repo}/issues/{number}/comments?per_page=100")
+                  comment_cache[key] = [c for page in pages for c in page]
+              return comment_cache[key]
+
+          def get_transitions(repo, number, project_number):
+              marker = "sprint-tracker" if project_number == LEGACY else f"sprint-tracker-project-{project_number}"
+              pattern = re.compile(rf"<!--\s*{re.escape(marker)}:\s*(.*?)\s*->\s*(.*?)\s*-->", re.I)
+              events = [
+                  {"date": c["created_at"], "from": m.group(1).strip(), "to": m.group(2).strip()}
+                  for c in get_comments(repo, number)
+                  for m in pattern.finditer(c.get("body") or "")
+              ]
+              return sorted(events, key=lambda e: e["date"])
+
+          def get_field(fields, name, value_key, default):
+              return next((
+                  f.get(value_key) or default for f in fields
+                  if f and (f.get("field") or {}).get("name", "").lower() == name
+              ), default)
+
+          # ----------------------------------------------------------
+          # GENERATE DASHBOARD DATA
+          #
+          # Each discovered project gets:
+          # - An entry in the dashboard index
+          # - One JSON file per sprint
+          #
+          # Historical membership is inferred from recorded transitions
+          # and current sprint assignments.
+          # ----------------------------------------------------------
+          index = {
+              "generatedAt": datetime.now(timezone.utc).isoformat(),
+              "projects": []
+          }
+
+          for project in discover_projects():
+              number = project["number"]
+              print(f"Collecting {project['title']} (#{number})", flush=True)
+
+              items, definitions = fetch_project(number)
+              issues = []
+
+              for item in items:
+                  content = item.get("content") or {}
+                  if not content.get("repository") or not content.get("number"): continue
+
+                  fields = item.get("fieldValues", {}).get("nodes") or []
+                  repo = content["repository"]["nameWithOwner"]
+                  issue_number = content["number"]
+
+                  issues.append({
+                      "number": issue_number,
+                      "repository": repo,
+                      "title": content["title"],
+                      "url": content["url"],
+                      "state": content["state"],
+                      "archived": item["isArchived"],
+                      "createdAt": content["createdAt"],
+                      "closedAt": content["closedAt"],
+                      "status": get_field(fields, "status", "name", "Unspecified"),
+                      "currentSprint": next((
+                          f.get("title") or "Backlog" for f in fields
+                          if f and (f.get("field") or {}).get("name", "").lower() in ("sprint", "iteration")
+                      ), "Backlog"),
+                      "transitions": get_transitions(repo, issue_number, number)
+                  })
+
+              names = set(definitions)
+              for issue in issues:
+                  if issue["currentSprint"] != "Backlog": names.add(issue["currentSprint"])
+                  for event in issue["transitions"]:
+                      names.update(n for n in (event["from"], event["to"]) if n != "Backlog")
+
+              ordered = sorted(names, key=lambda name: (
+                  definitions.get(name, {}).get("startDate") or "",
+                  name
+              ), reverse=True)
+
+              folder = OUT / f"project-{number}"
+              folder.mkdir(parents=True, exist_ok=True)
+              sprint_list = []
+
+              for position, name in enumerate(ordered):
+                  selected = [
+                      issue for issue in issues
+                      if issue["currentSprint"] == name or any(
+                          e["from"] == name or e["to"] == name for e in issue["transitions"]
+                      )
+                  ]
+
+                  data = {
+                      "project": project["title"],
+                      "projectNumber": number,
+                      "sprint": name,
+                      "dates": definitions.get(name),
+                      "issueCount": len(selected),
+                      "closedCount": sum(i["state"] == "CLOSED" for i in selected),
+                      "archivedCount": sum(i["archived"] for i in selected),
+                      "statuses": dict(Counter(i["status"] for i in selected)),
+                      "issues": selected
+                  }
+
+                  filename = f"sprint-{position}.json"
+                  (folder / filename).write_text(json.dumps(data, separators=(",", ":")))
+                  sprint_list.append({
+                      "name": name,
+                      "file": filename,
+                      "dates": definitions.get(name)
+                  })
+
+              index["projects"].append({
+                  "number": number,
+                  "name": project["title"],
+                  "issueCount": len(issues),
+                  "sprints": sprint_list
+              })
+
+              print(f"  {len(issues)} issues; {len(sprint_list)} sprints", flush=True)
+
+          (OUT / "index.json").write_text(json.dumps(index, separators=(",", ":")))
+          print(f"Built dashboard for {len(index['projects'])} projects", flush=True)
+          PY
+
+          # ----------------------------------------------------------
+          # BUILD INTERACTIVE HTML DASHBOARD
+          #
+          # Loads only the index at startup.
+          # Sprint JSON files are requested when selected.
+          # Previously requested files are cached in the browser.
+          # ----------------------------------------------------------
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Sprint Analytics</title>
+            <style>
+              :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1c2938;background:#f6f8fb}
+              *{box-sizing:border-box}
+              body{margin:0}
+              main{max-width:1360px;margin:auto;padding:32px 24px}
+              header{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+              h1{font-size:28px;letter-spacing:-.6px;margin:0 0 5px}
+              h2{font-size:18px;margin:0 0 18px}
+              .muted{color:#66768b}
+              .small{font-size:12px}
+              .toolbar{display:flex;gap:16px;flex-wrap:wrap;margin:28px 0}
+              label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:600}
+              select,input{padding:11px 13px;min-width:200px;border:1px solid #d8e0ea;border-radius:9px;background:#fff;color:#1c2938;font:inherit}
+              .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px}
+              .card,.panel{background:white;border:1px solid #e1e7ef;border-radius:13px;padding:20px}
+              .card .value{font-size:30px;font-weight:700;margin-top:8px}
+              .panel{margin-top:20px}
+              .columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+              .barrow{display:flex;align-items:center;gap:12px;margin:13px 0}
+              .barlabel{width:130px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+              .bartrack{flex:1;background:#edf2f8;border-radius:10px;height:13px;overflow:hidden}
+              .bar{background:#3976b5;height:100%;border-radius:10px}
+              .barvalue{width:38px;text-align:right}
+              .tablewrap{overflow:auto;border:1px solid #e1e7ef;border-radius:13px;background:white}
+              table{width:100%;border-collapse:collapse}
+              th,td{padding:13px 15px;text-align:left;border-bottom:1px solid #e9eef4}
+              th{background:#f0f4f9;font-size:12px;white-space:nowrap}
+              td{vertical-align:top}
+              a{color:#2363a1;text-decoration:none}
+              a:hover{text-decoration:underline}
+              .pill{display:inline-block;padding:4px 9px;border-radius:20px;background:#eef2f7;font-size:12px}
+              .error{color:#ae2e2e}
+              .empty{padding:22px;color:#66768b}
+              .sectionheading{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:30px 0 14px}
+              .sectionheading h2{margin:0}
+              @media(max-width:800px){.columns{grid-template-columns:1fr}main{padding:22px 14px}}
+            </style>
+          </head>
+          <body>
+          <main>
+            <header>
+              <div>
+                <h1>Sprint Analytics</h1>
+                <div class="muted">GitHub Projects · Test Dashboard</div>
+              </div>
+              <div class="muted small" id="generated">Loading...</div>
+            </header>
+
+            <div class="toolbar">
+              <label>Project
+                <select id="project"></select>
+              </label>
+              <label>Sprint
+                <select id="sprint"></select>
+              </label>
+              <label>Search issues
+                <input id="search" placeholder="Title or issue number">
+              </label>
+            </div>
+
+            <p id="message" class="muted"></p>
+
+            <div class="cards" id="cards"></div>
+
+            <div class="columns">
+              <section class="panel">
+                <h2>Status breakdown</h2>
+                <div id="statuses"></div>
+              </section>
+              <section class="panel">
+                <h2>Sprint information</h2>
+                <div id="information"></div>
+              </section>
+            </div>
+
+            <div class="sectionheading">
+              <h2>Issues associated with selected sprint</h2>
+              <span class="muted small" id="issuecount"></span>
+            </div>
+
+            <div class="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Issue</th>
+                    <th>Status</th>
+                    <th>State</th>
+                    <th>Archived</th>
+                    <th>Current Sprint</th>
+                  </tr>
+                </thead>
+                <tbody id="issues"></tbody>
+              </table>
+            </div>
+          </main>
+
+          <script>
+            // --------------------------------------------------------
+            // LOAD PROJECT INDEX AND SELECTED SPRINT ON DEMAND
+            //
+            // The dashboard does not download all historical sprint
+            // details at startup. Previously loaded files are cached.
+            // --------------------------------------------------------
+            const $ = id => document.getElementById(id);
+            const cache = new Map();
+            let index, selected, loadVersion = 0;
+
+            function escapeHTML(value) {
+              return String(value ?? "").replace(/[&<>"']/g, c => ({
+                "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+              })[c]);
+            }
+
+            async function fetchJSON(path) {
+              if (!cache.has(path)) {
+                const response = await fetch(path);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
+                cache.set(path, await response.json());
+              }
+              return cache.get(path);
+            }
+
+            function selectProject() {
+              selected = index.projects.find(p => String(p.number) === $("project").value);
+              $("sprint").innerHTML = selected.sprints.map(s =>
+                `<option value="${escapeHTML(s.file)}">${escapeHTML(s.name)}</option>`
+              ).join("");
+              $("search").value = "";
+              loadSprint();
+            }
+
+            async function loadSprint() {
+              const version = ++loadVersion;
+              $("message").className = "muted";
+
+              if (!selected || !$("sprint").value) {
+                $("message").textContent = "This project has no available sprint data.";
+                $("cards").innerHTML = "";
+                $("statuses").innerHTML = "";
+                $("information").innerHTML = "";
+                $("issues").innerHTML = "";
+                $("issuecount").textContent = "";
+                return;
+              }
+
+              const project = selected;
+              const path = `data/project-${project.number}/${$("sprint").value}`;
+              $("message").textContent = "Loading selected sprint...";
+
+              try {
+                const data = await fetchJSON(path);
+                if (version !== loadVersion) return;
+                selected.data = data;
+                $("message").textContent = `${data.sprint} · ${data.project}`;
+                render();
+              } catch (error) {
+                if (version !== loadVersion) return;
+                $("message").className = "error";
+                $("message").textContent = `Unable to load sprint: ${error.message}`;
+              }
+            }
+
+            // --------------------------------------------------------
+            // RENDER DASHBOARD
+            //
+            // The counts represent issues currently belonging to the
+            // project that are associated with the selected sprint.
+            #
+            // They are not yet point-in-time sprint commitment metrics.
+            // --------------------------------------------------------
+            function render() {
+              const data = selected?.data;
+              if (!data) return;
+
+              const metrics = [
+                ["Sprint issues",data.issueCount],
+                ["Closed issues",data.closedCount],
+                ["Open issues",data.issueCount-data.closedCount],
+                ["Archived items",data.archivedCount],
+                ["Total project issues",selected.issueCount]
+              ];
+
+              $("cards").innerHTML = metrics.map(([label,value]) => `
+                <div class="card">
+                  <div class="muted">${escapeHTML(label)}</div>
+                  <div class="value">${value}</div>
+                </div>
+              `).join("");
+
+              const statuses = Object.entries(data.statuses).sort((a,b) => b[1]-a[1]);
+              const max = Math.max(1,...statuses.map(s => s[1]));
+
+              $("statuses").innerHTML = statuses.map(([name,count]) => `
+                <div class="barrow">
+                  <div class="barlabel" title="${escapeHTML(name)}">${escapeHTML(name)}</div>
+                  <div class="bartrack"><div class="bar" style="width:${count/max*100}%"></div></div>
+                  <div class="barvalue">${count}</div>
+                </div>
+              `).join("") || '<p class="muted">No issues associated with this sprint.</p>';
+
+              const dates = data.dates;
+              $("information").innerHTML = `
+                <p><strong>Project:</strong> ${escapeHTML(data.project)}</p>
+                <p><strong>Sprint:</strong> ${escapeHTML(data.sprint)}</p>
+                <p><strong>Start date:</strong> ${escapeHTML(dates?.startDate || "Unavailable")}</p>
+                <p><strong>Duration:</strong> ${dates?.duration ? dates.duration+" days" : "Unavailable"}</p>
+                <p><strong>Project number:</strong> #${data.projectNumber}</p>
+              `;
+
+              const search = $("search").value.trim().toLowerCase();
+              const issues = data.issues.filter(i =>
+                String(i.number).includes(search) ||
+                i.title.toLowerCase().includes(search) ||
+                i.repository.toLowerCase().includes(search)
+              );
+
+              $("issuecount").textContent = `${issues.length} of ${data.issueCount} issues`;
+
+              $("issues").innerHTML = issues.map(i => `
+                <tr>
+                  <td>
+                    <a href="${escapeHTML(i.url)}" target="_blank" rel="noopener noreferrer">
+                      #${i.number} ${escapeHTML(i.title)}
+                    </a>
+                    <div class="muted small">${escapeHTML(i.repository)}</div>
+                  </td>
+                  <td><span class="pill">${escapeHTML(i.status)}</span></td>
+                  <td>${escapeHTML(i.state)}</td>
+                  <td>${i.archived ? "Yes" : "No"}</td>
+                  <td>${escapeHTML(i.currentSprint)}</td>
+                </tr>
+              `).join("") || '<tr><td colspan="5" class="empty">No matching issues.</td></tr>';
+            }
+
+            $("project").addEventListener("change",selectProject);
+            $("sprint").addEventListener("change",loadSprint);
+            $("search").addEventListener("input",render);
+
+            fetchJSON("data/index.json").then(data => {
+              index = data;
+              $("generated").textContent = `Updated ${new Date(data.generatedAt).toLocaleString()}`;
+
+              $("project").innerHTML = data.projects.map(p =>
+                `<option value="${p.number}">${escapeHTML(p.name)} (#${p.number})</option>`
+              ).join("");
+
+              if (data.projects.length) selectProject();
+              else $("message").textContent = "No open organization projects were found.";
+            }).catch(error => {
+              $("generated").textContent = "Dashboard unavailable";
+              $("message").className = "error";
+              $("message").textContent = error.message;
+            });
+          </script>
+          </body>
+          </html>
+          HTML
+
+          # The HTML is static and needs no build dependencies.
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -223,7 +223,7 @@ jobs:
 
               # Visible comment identifies which project changed.
               details = [
-                  f"**{CONFIG[p]['name']} (#{p}):** {old} -> {new}"
+                  f"**{CONFIG[p]['name']} :** {old} -> {new}"
                   for p, old, new in changes
               ]
 
